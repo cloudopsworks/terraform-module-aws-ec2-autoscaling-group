@@ -12,8 +12,15 @@ output "autoscaling_group_id" {
   value = length(aws_autoscaling_group.this) > 0 ? aws_autoscaling_group.this[0].id : ""
 }
 
+output "autoscaling_group_arn" {
+  value = length(aws_autoscaling_group.this) > 0 ? aws_autoscaling_group.this[0].arn : ""
+}
+
 output "launch_template_id" {
   value = length(aws_launch_template.this) > 0 ? aws_launch_template.this[0].id : ""
+}
+output "launch_template_arn" {
+  value = length(aws_launch_template.this) > 0 ? aws_launch_template.this[0].arn : ""
 }
 
 output "iam_role" {

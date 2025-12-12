@@ -31,7 +31,7 @@ variable "name_prefix" {
 #     name: "my-ami-*"  # (Optional) AMI name/pattern to search for when ami.id is not provided.
 #     architecture: "x86_64" | "arm64"  # (Optional) Restrict search by architecture. Default: "x86_64".
 #     most_recent: true | false  # (Optional) Select most recent AMI when using name/filters. Default: true.
-#     owners: ["self" | "amazon" | "<account-id>"]  # (Optional) AMI owners to search. Default: ["self"].
+#     owners: ["self"]  # (Optional) AMI owners to search. Allowed: "self", "amazon", "aws-marketplace", or specific AWS account IDs. Default: ["self"].
 #     filters:  # (Optional) Additional filters for AMI lookup.
 #       - name: "tag:Build"  # (Optional) Filter name as supported by EC2 describe-images API (e.g., name, tag:*, architecture, etc.).
 #         values: ["2025-*"]  # (Optional) Values for the above filter.
@@ -75,9 +75,9 @@ variable "name_prefix" {
 #
 #   metadata_options:  # (Optional) Instance Metadata Service (IMDS) options (Launch Template).
 #     http_endpoint: "enabled" | "disabled"  # (Optional) Control IMDS endpoint availability. Default: "enabled".
-#     http_put_response_hop_limit: 1  # (Optional) Allowed network hops for PUT. Default: null.
+#     http_put_response_hop_limit: 1  # (Optional) Allowed network hops for PUT (1-64). Default: provider default (1).
 #     http_tokens: "required" | "optional"  # (Optional) Require IMDSv2 session tokens. Default: "optional".
-#     instance_metadata_tags: "enabled" | "disabled"  # (Optional) Include instance tags in IMDS. Default: "enabled".
+#     instance_metadata_tags: "enabled" | "disabled"  # (Optional) Include instance tags in IMDS. Default: provider default (usually "disabled").
 #
 #   key_pair:  # (Optional) Module-managed EC2 key pair.
 #     create: true | false  # (Optional) Create and attach a key pair. Default: false.
@@ -206,9 +206,9 @@ variable "asg" {
 }
 
 ##
-# timeouts:
-#   update: "20m"   # optional, default 20m
-#   delete: "20m"   # optional, default 20m
+# timeouts:  # (Optional) Operation timeouts for the Auto Scaling Group resource.
+#   update: "20m"  # (Optional) Timeout for create/update operations. Default: "20m".
+#   delete: "20m"  # (Optional) Timeout for delete operations. Default: "20m".
 variable "timeouts" {
   description = "The timeouts of the EC2 Instance"
   type        = any
@@ -216,14 +216,14 @@ variable "timeouts" {
 }
 
 ##
-# iam:
-#   create: true | false                   # defaults to true (module creates role + instance profile)
-#   path: "/service-role/"                # optional
-#   role_description: "Role for ${name}"   # optional
-#   permissions_boundary: "arn:aws:iam::...:policy/..."  # optional
-#   role_policies:                         # optional managed policies to attach (map name => ARN)
+# iam:  # (Optional) IAM resources configuration for EC2 instances (role and instance profile).
+#   create: true | false  # (Optional) Create IAM role and instance profile and attach to instances. Default: true.
+#   path: "/service-role/"  # (Optional) Path for the IAM role and instance profile. Default: null.
+#   role_description: "Role for ${name}"  # (Optional) Description for the IAM role. Default: "IAM Instance Role ${local.name}".
+#   permissions_boundary: "arn:aws:iam::...:policy/..."  # (Optional) ARN of the permissions boundary policy. Default: null.
+#   role_policies:  # (Optional) Map of managed policy attachments (key = logical name, value = policy ARN).
 #     CWAgent: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-#   extra_tags:                            # optional extra tags on IAM resources
+#   extra_tags:  # (Optional) Extra tags to apply to IAM resources.
 #     Team: "Platform"
 variable "iam" {
   description = "The IAM role to use for the EC2 Instance"
