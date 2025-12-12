@@ -118,7 +118,7 @@ resource "aws_autoscaling_group" "this" {
   name                      = "${local.name}-asg"
   max_size                  = try(var.asg.max_size, 1)
   min_size                  = try(var.asg.min_size, 1)
-  desired_capacity          = try(var.asg.desired_capacity, 1)
+  desired_capacity          = try(var.asg.desired_capacity, var.asg.desired  , 1)
   health_check_grace_period = try(var.asg.health_check.grace_period, 300)
   health_check_type         = try(var.asg.health_check.type, "ELB")
   force_delete              = try(var.asg.force_delete, false)
