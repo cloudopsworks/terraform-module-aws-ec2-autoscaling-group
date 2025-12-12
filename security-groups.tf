@@ -9,7 +9,7 @@
 
 data "aws_subnet" "this" {
   count = try(var.asg.create, true) ? 1 : 0
-  id    = var.asg.vpc.subnet_id
+  id    = var.asg.vpc.subnet_ids[0]
 }
 
 resource "aws_security_group" "this" {
