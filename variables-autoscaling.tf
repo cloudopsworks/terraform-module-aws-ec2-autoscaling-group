@@ -55,7 +55,7 @@ variable "name_prefix" {
 #   vpc:
 #     security_group_ids: ["sg-12345678"] # defaults to null
 #     associate_public_ip_address: true | false # defaults to null
-#     subnet_id: "subnet-id" # defaults to null
+#     subnet_ids: ["subnet-id", "subnet-id2"] # required
 #     private_ip: "private-ip" # defaults to null
 #     secondary_private_ips: ["secondary-private-ip"] # defaults to null
 #     ipv6_address_count: 1 # defaults to null

@@ -122,7 +122,7 @@ resource "aws_autoscaling_group" "this" {
   health_check_grace_period = try(var.asg.health_check.grace_period, 300)
   health_check_type         = try(var.asg.health_check.type, "ELB")
   force_delete              = try(var.asg.force_delete, false)
-
+  vpc_zone_identifier       = var.asg.vpc.subnet_ids
   dynamic "launch_template" {
     for_each = try(var.asg.mixed_instances, false) ? [] : [1]
     content {
