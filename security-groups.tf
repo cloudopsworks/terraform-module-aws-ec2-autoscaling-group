@@ -9,12 +9,12 @@
 
 data "aws_subnet" "this" {
   count = try(var.asg.create, true) ? 1 : 0
-  id    = var.asg.vpc.subnet_id
+  id    = var.asg.vpc.subnet_ids[0]
 }
 
 resource "aws_security_group" "this" {
   count       = try(var.asg.create, true) && try(var.asg.security_group.create, false) ? 1 : 0
-  name        = "${local.name}-sg"
+  name        = "${local.name}-asg-sg"
   description = "Security group for ${local.name} access to any resource"
   vpc_id      = data.aws_subnet.this[0].vpc_id
 
@@ -26,7 +26,7 @@ resource "aws_security_group" "this" {
   }
 
   tags = merge(local.all_tags, tomap({
-    "Name" = "${local.name}-sg"
+    "Name" = "${local.name}-asg-sg"
   }))
   lifecycle {
     create_before_destroy = true

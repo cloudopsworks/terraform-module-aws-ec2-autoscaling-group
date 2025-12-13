@@ -9,7 +9,7 @@
 data "aws_partition" "current" {}
 
 locals {
-  iam_role_name = "role-${local.name}"
+  iam_role_name = "${local.name}-asg-role"
 }
 
 data "aws_iam_policy_document" "assume_role" {
