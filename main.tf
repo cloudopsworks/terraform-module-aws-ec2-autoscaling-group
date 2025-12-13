@@ -119,6 +119,7 @@ resource "aws_launch_template" "this" {
     resource_type = "instance"
     tags          = local.instance_tags
   }
+  tags = local.all_tags
 }
 
 resource "aws_autoscaling_group" "this" {
@@ -135,7 +136,7 @@ resource "aws_autoscaling_group" "this" {
     for_each = try(var.asg.mixed_instances, false) ? [] : [1]
     content {
       id      = aws_launch_template.this[0].id
-      version = "$Latest"
+      version = aws_launch_template.this[0].latest_version
     }
   }
   dynamic "mixed_instances_policy" {
