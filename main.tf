@@ -132,13 +132,7 @@ resource "aws_autoscaling_group" "this" {
   health_check_type         = try(var.asg.health_check.type, "ELB")
   force_delete              = try(var.asg.force_delete, false)
   vpc_zone_identifier       = var.asg.vpc.subnet_ids
-  dynamic "launch_template" {
-    for_each = try(var.asg.mixed_instances, false) ? [] : [1]
-    content {
-      id      = aws_launch_template.this[0].id
-      version = aws_launch_template.this[0].latest_version
-    }
-  }
+  enabled_metrics           = try(var.asg.enabled_metrics, null)
   dynamic "mixed_instances_policy" {
     for_each = try(var.asg.mixed_instances, false) ? [1] : []
     content {
