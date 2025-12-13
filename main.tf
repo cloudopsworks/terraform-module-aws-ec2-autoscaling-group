@@ -133,13 +133,20 @@ resource "aws_autoscaling_group" "this" {
   force_delete              = try(var.asg.force_delete, false)
   vpc_zone_identifier       = var.asg.vpc.subnet_ids
   enabled_metrics           = try(var.asg.enabled_metrics, null)
+  dynamic "launch_template" {
+    for_each = try(var.asg.mixed_instances, false) ? [] : [1]
+    content {
+      id      = aws_launch_template.this[0].id
+      version = aws_launch_template.this[0].latest_version
+    }
+  }
   dynamic "mixed_instances_policy" {
     for_each = try(var.asg.mixed_instances, false) ? [1] : []
     content {
       launch_template {
         launch_template_specification {
           launch_template_id = aws_launch_template.this[0].id
-          version            = "$Latest"
+          version            = aws_launch_template.this[0].latest_version
         }
         dynamic "override" {
           for_each = try(var.asg.instance_types, [])
