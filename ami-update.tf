@@ -18,7 +18,7 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
   event_bus_name = data.aws_cloudwatch_event_bus.default.name
   state          = "ENABLED"
   event_pattern = jsonencode({
-    source      = "aws.backup"
+    source      = ["aws.backup"]
     detail-type = ["Recovery Point State Change"]
     detail = {
       status       = ["COMPLETED"]
