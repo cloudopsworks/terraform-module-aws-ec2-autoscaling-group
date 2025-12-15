@@ -276,6 +276,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "ec2:DescribeLaunchTemplates",
       "ec2:DescribeLaunchTemplateVersions",
       "ec2:CreateLaunchTemplateVersion",
+      "ec2:CreateTags",
     ]
     resources = [
       "*"
@@ -293,16 +294,15 @@ data "aws_iam_policy_document" "update_asg_auto" {
     ]
   }
 
-  # statement {
-  #   effect = "Allow"
-  #   actions = [
-  #     "iam:PassRole"
-  #   ]
-  #   resources = [
-  #     aws_iam_instance_profile.this[0].arn,
-  #     "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
-  #   ]
-  # }
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:PassRole"
+    ]
+    resources = [
+      aws_iam_instance_profile.this[0].arn,
+    ]
+  }
 }
 resource "aws_iam_role" "update_asg_auto" {
   count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
