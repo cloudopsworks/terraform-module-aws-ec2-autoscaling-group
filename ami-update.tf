@@ -67,7 +67,7 @@ resource "aws_ssm_document" "update_asg" {
         timeoutSeconds = 300
         maxAttempts    = 1
         onFailure      = "Abort"
-        InputPayload = {
+        inputPayload = {
           imageId              = "{{ imageId }}"
           autoscalingGroupName = "{{ autoscalingGroupName }}"
           launchTemplateId     = "{{ launchTemplateId }}"
