@@ -34,7 +34,7 @@ resource "aws_ssm_document" "update_asg" {
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
-  version_name    = "2.5"
+  version_name    = "2.6"
   content         = <<DOC
 description: "Update Auto Scaling Group Launch Template with new AMI"
 schemaVersion: "0.3"
@@ -141,7 +141,7 @@ mainSteps:
               DefaultVersion=str(new_version_number)
             )
             print(f"Set Launch Template {launch_template_id} default version to {new_version_number}")
-            autoscaling.update_auto_scaling_group(
+            asg.update_auto_scaling_group(
               AutoScalingGroupName=auto_scaling_group_name,
               LaunchTemplate={
                 'LaunchTemplateId': launch_template_id,
