@@ -36,7 +36,7 @@ resource "aws_ssm_document" "update_asg" {
   tags            = local.all_tags
   version_name    = "2.0"
   content         = <<DOC
-description: "Update ASG with new AMI"
+description: "Update Auto Scaling Group Launch Template with new AMI"
 schemaVersion: "0.3"
 assumeRole: "{{ AutomationAssumeRole }}"
 parameters:
