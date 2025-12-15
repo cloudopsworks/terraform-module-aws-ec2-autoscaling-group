@@ -34,7 +34,7 @@ resource "aws_ssm_document" "update_asg" {
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
-  version_name    = "2.3"
+  version_name    = "2.4"
   content         = <<DOC
 description: "Update Auto Scaling Group Launch Template with new AMI"
 schemaVersion: "0.3"
@@ -121,19 +121,31 @@ mainSteps:
           update_image = ec2.describe_images(ImageIds=[image_id])['Images'][0]
           if compare_tags(tags, update_image.get('Tags', [])):
             print(f"Image details: {json.dumps(update_image)}")
+            response = ec2.describe_launch_template_versions(
+              LaunchTemplateId=launch_template_id,
+              Versions=['$Latest']
+            )
+            last_version = response['LaunchTemplateVersions'][0]['VersionNumber']
+            print(f"Latest Launch Template version: {last_version}")
             response = ec2.create_launch_template_version(
               LaunchTemplateId=launch_template_id,
-              SourceVersion='$latest',
+              SourceVersion=str(last_version),
               LaunchTemplateData={
                 'ImageId': image_id,
               }
             )
             new_version_number = response['LaunchTemplateVersion']['VersionNumber']
+            print(f"Created new Launch Template version: {new_version_number}")
+            response = ec2.modify_launch_template(
+              LaunchTemplateId=launch_template_id
+              DefaultVersion=str(new_version_number)
+            )
+            print(f"Set Launch Template {launch_template_id} default version to {new_version_number}")
             autoscaling.update_auto_scaling_group(
               AutoScalingGroupName=auto_scaling_group_name,
               LaunchTemplate={
                 'LaunchTemplateId': launch_template_id,
-                'Version': new_version_number
+                'Version': str(new_version_number)
               }
             )
 
