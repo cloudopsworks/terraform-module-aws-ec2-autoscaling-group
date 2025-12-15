@@ -71,10 +71,10 @@ resource "aws_ssm_document" "update_asg" {
           Runtime = "python3.12"
           Handler = "update_asg"
           InputPayload = {
-            imageId              = "{{ imageId }}"
+            imageId              = "{{ ImageId }}"
             autoscalingGroupName = "{{ AutoscalingGroupName }}"
             launchTemplateId     = "{{ LaunchTemplateId }}"
-            tags                 = "{{ T ags }}"
+            tags                 = "{{ Tags }}"
           }
           Script = <<-EOF
 from __future__ import print_function
