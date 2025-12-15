@@ -12,7 +12,7 @@ data "aws_cloudwatch_event_bus" "default" {
 }
 
 resource "aws_cloudwatch_event_rule" "update_asg" {
-  count          = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count          = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name           = "${local.name}-asg-upd-rule"
   description    = "Event Rule to trigger AMI update for ASG ${local.name}"
   event_bus_name = data.aws_cloudwatch_event_bus.default.name
@@ -29,7 +29,7 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
 }
 
 resource "aws_ssm_document" "update_asg" {
-  count         = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count         = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name          = "${local.name}-asg-upd-ssm-doc"
   document_type = "Automation"
   content = jsonencode({
@@ -89,7 +89,7 @@ ec2 = boto3.client('ec2')
 
 # function to compare tags
 # inputs:
-#  required Tags = list of dicts with 'name' as key and 'values' (array) as possible values
+#  required Tags = list of dicts with 'name' as key and 'values' (array) as possible values, but name should contain tag: prefix, (need further filtering on tag names only)
 #  image_tags = list of dicts with 'Key' and 'Value'
 # must match all required_tags match to return True, required_tags['values'] can have multiple values for OR logic applies only on that field
 def compare_tags(required_tags, image_tags):
@@ -97,6 +97,9 @@ def compare_tags(required_tags, image_tags):
   matched_count = 0
   for req_tag in required_tags:
     req_name = req_tag['name']
+    if not req_name.startswith('tag:'):
+      continue
+    req_name = req_name[4:]  # remove 'tag:' prefix
     req_values = req_tag['values']
     for img_tag in image_tags:
       img_key = img_tag['Key']
@@ -152,7 +155,7 @@ EOF
 }
 
 resource "aws_cloudwatch_event_target" "update_asg" {
-  count          = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count          = try(var.asg.ami.update.enabled, false) ? 1 : 0
   rule           = aws_cloudwatch_event_rule.update_asg[0].name
   event_bus_name = data.aws_cloudwatch_event_bus.default.name
   target_id      = "${local.name}-asg-upd-target"
@@ -175,7 +178,7 @@ resource "aws_cloudwatch_event_target" "update_asg" {
 
 ### SSM ROLE
 data "aws_iam_policy_document" "update_asg_trust" {
-  count = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
   statement {
     actions = ["sts:AssumeRole"]
     principals {
@@ -186,7 +189,7 @@ data "aws_iam_policy_document" "update_asg_trust" {
 }
 
 data "aws_iam_policy_document" "update_asg" {
-  count = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
   statement {
     effect = "Allow"
     actions = [
@@ -209,13 +212,13 @@ data "aws_iam_policy_document" "update_asg" {
 }
 
 resource "aws_iam_role" "update_asg" {
-  count              = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name               = "${local.name}-eventbridge-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_trust[0].json
 }
 
 resource "aws_iam_role_policy" "update_asg" {
-  count  = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count  = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name   = "SSMLifecycle"
   role   = aws_iam_role.update_asg[0].id
   policy = data.aws_iam_policy_document.update_asg[0].json
@@ -223,7 +226,7 @@ resource "aws_iam_role_policy" "update_asg" {
 
 ## SSM AUTOMATION ROLE
 data "aws_iam_policy_document" "update_asg_auto_trust" {
-  count = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
   statement {
     actions = ["sts:AssumeRole"]
     principals {
@@ -244,13 +247,13 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
 }
 
 resource "aws_iam_role" "update_asg_auto" {
-  count              = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name               = "${local.name}-auto-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_auto_trust[0].json
 }
 
 resource "aws_iam_role_policy_attachment" "update_asg_auto_ssm" {
-  count      = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  count      = try(var.asg.ami.update.enabled, false) ? 1 : 0
   role       = aws_iam_role.update_asg_auto[0].id
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole"
 }
