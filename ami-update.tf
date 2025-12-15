@@ -55,7 +55,7 @@ resource "aws_ssm_document" "update_asg" {
         description = "The ID of the Launch Template associated with the ASG."
       }
       Tags = {
-        type        = "Array"
+        type        = "MapList"
         description = "Tags array to filter instances in the ASG."
         default     = []
       }
