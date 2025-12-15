@@ -290,6 +290,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
     ]
     resources = [
       aws_autoscaling_group.this[0].arn
+      aws_launch_template.this[0].arn
     ]
   }
 
