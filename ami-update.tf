@@ -165,13 +165,15 @@ resource "aws_cloudwatch_event_target" "update_asg" {
     input_paths = {
       resourceId = "$.resources[0]"
     }
-    input_template = jsonencode({
-      AutomationAssumeRole = aws_iam_role.update_asg_auto[0].arn
-      ImageId              = "\<resourceId\>"
-      AutoscalingGroupName = aws_autoscaling_group.this[0].name
-      LaunchTemplateId     = aws_launch_template.this[0].id
-      Tags                 = try(var.asg.ami.filters, [])
-    })
+    input_template = <<EOF
+{
+  "AutomationAssumeRole": "${aws_iam_role.update_asg_auto[0].arn}",
+  "ImageId": "<resourceId>",
+  "AutoscalingGroupName": "${aws_autoscaling_group.this[0].name}",
+  "LaunchTemplateId": "${aws_launch_template.this[0].id}",
+  "Tags": ${jsonencode(try(var.asg.ami.filters, []))}
+}
+EOF
   }
 
 }
