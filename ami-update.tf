@@ -68,7 +68,7 @@ resource "aws_ssm_document" "update_asg" {
         maxAttempts    = 1
         onFailure      = "Abort"
         inputs = {
-          Runtime = "python3.12"
+          Runtime = "python3.13"
           Handler = "update_asg"
           InputPayload = {
             imageId              = "{{ ImageId }}"
