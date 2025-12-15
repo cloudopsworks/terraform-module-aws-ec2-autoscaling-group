@@ -133,6 +133,15 @@ resource "aws_autoscaling_group" "this" {
   force_delete              = try(var.asg.force_delete, false)
   vpc_zone_identifier       = var.asg.vpc.subnet_ids
   enabled_metrics           = try(var.asg.enabled_metrics, null)
+  termination_policies      = try(var.asg.termination_policies, null)
+  suspended_processes       = try(var.asg.suspended_processes, null)
+  availability_zones        = try(var.asg.vpc.availability_zones, null)
+  dynamic "availability_zone_distribution" {
+    for_each = try(var.asg.availability_zone_distribution, "") != "" ? [1] : []
+    content {
+      capacity_distribution_strategy = var.asg.availability_zone_distribution
+    }
+  }
   dynamic "launch_template" {
     for_each = try(var.asg.mixed_instances, false) ? [] : [1]
     content {
