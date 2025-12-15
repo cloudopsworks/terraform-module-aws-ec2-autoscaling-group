@@ -101,8 +101,8 @@ mainSteps:
               img_value = img_tag['Value']
               if req_name == img_key:
                 if img_value in req_values:
-                matched_count += 1
-                break
+                  matched_count += 1
+                  break
           return matched_count >= required_count
 
         # Main function
