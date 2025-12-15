@@ -34,6 +34,7 @@ resource "aws_ssm_document" "update_asg" {
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
+  version_name    = "2.0"
   content         = <<DOC
 description: "Update ASG with new AMI"
 schemaVersion: "0.3"
