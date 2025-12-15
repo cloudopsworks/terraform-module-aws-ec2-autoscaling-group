@@ -29,10 +29,11 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
 }
 
 resource "aws_ssm_document" "update_asg" {
-  count         = try(var.asg.ami.update.enabled, false) ? 1 : 0
-  name          = "${local.name}-asg-upd-ssm-doc"
-  document_type = "Automation"
-  tags          = local.all_tags
+  count          = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  name           = "${local.name}-asg-upd-ssm-doc"
+  document_type  = "Automation"
+  latest_version = true
+  tags           = local.all_tags
   content = jsonencode({
     description   = "Update ASG with new AMI"
     schemaVersion = "0.3"
