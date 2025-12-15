@@ -137,7 +137,7 @@ mainSteps:
             new_version_number = response['LaunchTemplateVersion']['VersionNumber']
             print(f"Created new Launch Template version: {new_version_number}")
             response = ec2.modify_launch_template(
-              LaunchTemplateId=launch_template_id
+              LaunchTemplateId=launch_template_id,
               DefaultVersion=str(new_version_number)
             )
             print(f"Set Launch Template {launch_template_id} default version to {new_version_number}")
