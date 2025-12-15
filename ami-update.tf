@@ -29,131 +29,119 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
 }
 
 resource "aws_ssm_document" "update_asg" {
-  count          = try(var.asg.ami.update.enabled, false) ? 1 : 0
-  name           = "${local.name}-asg-upd-ssm-doc"
-  document_type  = "Automation"
-  latest_version = true
-  tags           = local.all_tags
-  content = jsonencode({
-    description   = "Update ASG with new AMI"
-    schemaVersion = "0.3"
-    assumeRole    = "{{ AutomationAssumeRole }}"
-    parameters = {
-      AutomationAssumeRole = {
-        type        = "String"
-        description = "The ARN of the role that allows Automation to perform the actions on your behalf."
-        default     = ""
-      }
-      ImageId = {
-        type        = "String"
-        description = "The ID of the AMI to use for the update."
-      }
-      AutoscalingGroupName = {
-        type        = "String"
-        description = "The ARN of the Auto Scaling group to update."
-      }
-      LaunchTemplateId = {
-        type        = "String"
-        description = "The ID of the Launch Template associated with the ASG."
-      }
-      Tags = {
-        type        = "MapList"
-        description = "Tags array to filter instances in the ASG."
-        default     = []
-      }
-    }
-    mainSteps : [
-      {
-        name           = "updateASG"
-        action         = "aws:executeScript"
-        timeoutSeconds = 300
-        maxAttempts    = 1
-        onFailure      = "Abort"
-        inputs = {
-          Runtime = "python3.11"
-          Handler = "update_asg"
-          InputPayload = {
-            imageId              = "{{ ImageId }}"
-            autoscalingGroupName = "{{ AutoscalingGroupName }}"
-            launchTemplateId     = "{{ LaunchTemplateId }}"
-            tags                 = "{{ Tags }}"
-          }
-          Script = <<-EOF
-from __future__ import print_function
-import datetime
-import json
-import time
-import boto3
+  count           = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  name            = "${local.name}-asg-upd-ssm-doc"
+  document_type   = "Automation"
+  document_format = "YAML"
+  tags            = local.all_tags
+  content         = <<DOC
+description: "Update ASG with new AMI"
+schemaVersion: "0.3"
+assumeRole: "{{ AutomationAssumeRole }}"
+parameters:
+  AutomationAssumeRole:
+    type: "String"
+    description: "The ARN of the role that allows Automation to perform the actions on your behalf."
+    default: ""
+  ImageId:
+    type: "String"
+    description: "The ID of the AMI to use for the update."
+  AutoscalingGroupName:
+    type: "String"
+    description: "The ARN of the Auto Scaling group to update."
+  LaunchTemplateId:
+    type: "String"
+    description: "The ID of the Launch Template associated with the ASG."
+  Tags:
+    type: "MapList"
+    description: "Tags array to filter instances in the ASG."
+    default: []
+mainSteps:
+  - name: "updateASG"
+    action: "aws:executeScript"
+    timeoutSeconds: 300
+    maxAttempts: 1
+    onFailure: "Abort"
+    inputs:
+      Runtime: "python3.11"
+      Handler: "update_asg"
+      InputPayload:
+        imageId: "{{ ImageId }}"
+        autoscalingGroupName: "{{ AutoscalingGroupName }}"
+        launchTemplateId: "{{ LaunchTemplateId }}"
+        tags: "{{ Tags }}"
+      Script: |-
+        from __future__ import print_function
+        import datetime
+        import json
+        import time
+        import boto3
 
-# create auto scaling and ec2 client
-asg = boto3.client('autoscaling')
-ec2 = boto3.client('ec2')
+        # create auto scaling and ec2 client
+        asg = boto3.client('autoscaling')
+        ec2 = boto3.client('ec2')
 
-# function to compare tags
-# inputs:
-#  required Tags = list of dicts with 'name' as key and 'values' (array) as possible values, but name should contain tag: prefix, (need further filtering on tag names only)
-#  image_tags = list of dicts with 'Key' and 'Value'
-# must match all required_tags match to return True, required_tags['values'] can have multiple values for OR logic applies only on that field
-def compare_tags(required_tags, image_tags):
-  required_count = len(required_tags)
-  matched_count = 0
-  for req_tag in required_tags:
-    req_name = req_tag['name']
-    if not req_name.startswith('tag:'):
-      continue
-    req_name = req_name[4:]  # remove 'tag:' prefix
-    req_values = req_tag['values']
-    for img_tag in image_tags:
-      img_key = img_tag['Key']
-      img_value = img_tag['Value']
-      if req_name == img_key:
-        if img_value in req_values:
-        matched_count += 1
-        break
-  return matched_count >= required_count
+        # function to compare tags
+        # inputs:
+        #  required Tags = list of dicts with 'name' as key and 'values' (array) as possible values, but name should contain tag: prefix, (need further filtering on tag names only)
+        #  image_tags = list of dicts with 'Key' and 'Value'
+        # must match all required_tags match to return True, required_tags['values'] can have multiple values for OR logic applies only on that field
+        def compare_tags(required_tags, image_tags):
+          required_count = len(required_tags)
+          matched_count = 0
+          for req_tag in required_tags:
+            req_name = req_tag['name']
+            if not req_name.startswith('tag:'):
+              continue
+            req_name = req_name[4:]  # remove 'tag:' prefix
+            req_values = req_tag['values']
+            for img_tag in image_tags:
+              img_key = img_tag['Key']
+              img_value = img_tag['Value']
+              if req_name == img_key:
+                if img_value in req_values:
+                matched_count += 1
+                break
+          return matched_count >= required_count
 
-# Main function
-def update_asg(event, context):
-  print("Received event: " + json.dumps(event, indent=2))
-  image_id = event['imageId']
-  asg_name = event['autoscalingGroupName']
-  launch_template_id = event['launchTemplateId']
-  tags = event['tags']
-  print(f"Updating ASG {asg_name} with new AMI {image_id}")
-  update_image = ec2.describe_images(ImageIds=[image_id])['Images'][0]
-  if compare_tags(tags, update_image.get('Tags', [])):
-    print(f"Image details: {json.dumps(update_image)}")
-    response = ec2.create_launch_template_version(
-      LaunchTemplateId=launch_template_id,
-      SourceVersion='$latest',
-      LaunchTemplateData={
-        'ImageId': image_id,
-      }
-    )
-    new_version_number = response['LaunchTemplateVersion']['VersionNumber']
-    autoscaling.update_auto_scaling_group(
-      AutoScalingGroupName=auto_scaling_group_name,
-      LaunchTemplate={
-        'LaunchTemplateId': launch_template_id,
-        'Version': str(new_version_number)
-      }
-    )
+        # Main function
+        def update_asg(event, context):
+          print("Received event: " + json.dumps(event, indent=2))
+          image_id = event['imageId']
+          asg_name = event['autoscalingGroupName']
+          launch_template_id = event['launchTemplateId']
+          tags = event['tags']
+          print(f"Updating ASG {asg_name} with new AMI {image_id}")
+          update_image = ec2.describe_images(ImageIds=[image_id])['Images'][0]
+          if compare_tags(tags, update_image.get('Tags', [])):
+            print(f"Image details: {json.dumps(update_image)}")
+            response = ec2.create_launch_template_version(
+              LaunchTemplateId=launch_template_id,
+              SourceVersion='$latest',
+              LaunchTemplateData={
+                'ImageId': image_id,
+              }
+            )
+            new_version_number = response['LaunchTemplateVersion']['VersionNumber']
+            autoscaling.update_auto_scaling_group(
+              AutoScalingGroupName=auto_scaling_group_name,
+              LaunchTemplate={
+                'LaunchTemplateId': launch_template_id,
+                'Version': str(new_version_number)
+              }
+            )
 
-    return {
-      'statusCode': 200,
-      'body': f'ASG updated successfully to use AMI {image_id} with Launch Template version {new_version_number}'
-    }
-  else:
-    print("No matching tags found. Skipping ASG update.")
-    return {
-      'statusCode': 200,
-      'body': 'No matching tags found. ASG update skipped.'
-    }
-EOF
-        }
-      }
-    ]
-  })
+            return {
+              'statusCode': 200,
+              'body': f'ASG updated successfully to use AMI {image_id} with Launch Template version {new_version_number}'
+            }
+          else:
+            print("No matching tags found. Skipping ASG update.")
+            return {
+              'statusCode': 200,
+              'body': 'No matching tags found. ASG update skipped.'
+            }
+DOC
 }
 
 resource "aws_cloudwatch_event_target" "update_asg" {
