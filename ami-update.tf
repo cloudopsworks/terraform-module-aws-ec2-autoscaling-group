@@ -264,6 +264,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "ec2:DescribeImages",
       "ec2:DescribeTags",
       "ec2:ModifyLaunchTemplate",
+      "ec2:DescribeLaunchTemplates",
     ]
     resources = [
       aws_launch_template.this[0].arn
