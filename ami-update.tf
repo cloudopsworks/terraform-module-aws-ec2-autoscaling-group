@@ -300,7 +300,8 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "iam:PassRole"
     ]
     resources = [
-      aws_iam_instance_profile.this[0].arn
+      aws_iam_instance_profile.this[0].arn,
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
     ]
   }
 }
