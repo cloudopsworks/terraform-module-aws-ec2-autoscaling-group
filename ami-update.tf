@@ -32,6 +32,7 @@ resource "aws_ssm_document" "update_asg" {
   count         = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name          = "${local.name}-asg-upd-ssm-doc"
   document_type = "Automation"
+  tags          = local.all_tags
   content = jsonencode({
     description   = "Update ASG with new AMI"
     schemaVersion = "0.3"
@@ -175,7 +176,6 @@ resource "aws_cloudwatch_event_target" "update_asg" {
 }
 EOF
   }
-
 }
 
 ### SSM ROLE
@@ -217,6 +217,7 @@ resource "aws_iam_role" "update_asg" {
   count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name               = "${local.name}-eventbridge-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_trust[0].json
+  tags               = local.all_tags
 }
 
 resource "aws_iam_role_policy" "update_asg" {
@@ -252,6 +253,7 @@ resource "aws_iam_role" "update_asg_auto" {
   count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name               = "${local.name}-auto-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_auto_trust[0].json
+  tags               = local.all_tags
 }
 
 resource "aws_iam_role_policy_attachment" "update_asg_auto_ssm" {
