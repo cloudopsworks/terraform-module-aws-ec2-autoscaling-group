@@ -19,7 +19,7 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
   state          = "ENABLED"
   event_pattern = jsonencode({
     source      = "aws.backup"
-    detail-type = "Recovery Point State Change"
+    detail-type = ["Recovery Point State Change"]
     detail = {
       status       = ["COMPLETED"]
       resourceType = ["EC2"]
@@ -76,7 +76,7 @@ resource "aws_ssm_document" "update_asg" {
             launchTemplateId     = "{{ launchTemplateId }}"
             tags                 = "{{ tags }}"
           }
-          Script  = <<-EOF
+          Script = <<-EOF
 from __future__ import print_function
 import datetime
 import json
