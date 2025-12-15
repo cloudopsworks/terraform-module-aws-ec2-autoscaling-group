@@ -67,15 +67,15 @@ resource "aws_ssm_document" "update_asg" {
         timeoutSeconds = 300
         maxAttempts    = 1
         onFailure      = "Abort"
-        inputPayload = {
-          imageId              = "{{ imageId }}"
-          autoscalingGroupName = "{{ autoscalingGroupName }}"
-          launchTemplateId     = "{{ launchTemplateId }}"
-          tags                 = "{{ tags }}"
-        }
         inputs = {
           Runtime = "python3.12"
           Handler = "update_asg"
+          InputPayload = {
+            imageId              = "{{ imageId }}"
+            autoscalingGroupName = "{{ autoscalingGroupName }}"
+            launchTemplateId     = "{{ launchTemplateId }}"
+            tags                 = "{{ tags }}"
+          }
           Script  = <<-EOF
 from __future__ import print_function
 import datetime
