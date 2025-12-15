@@ -244,12 +244,46 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
   }
 }
 
+data "aws_iam_policy_document" "update_asg_auto" {
+  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeImages",
+      "ec2:CreateLaunchTemplateVersion",
+      "ec2:DescribeLaunchTemplateVersions",
+      "ec2:DescribeTags",
+    ]
+    resources = [
+      aws_launch_template.this[0].arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "autoscaling:UpdateAutoScalingGroup",
+      "autoscaling:DescribeAutoScalingGroups",
+    ]
+    resources = [
+      aws_launch_template.this[0].arn
+    ]
+  }
+}
 resource "aws_iam_role" "update_asg_auto" {
   count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
   name               = "${local.name}-auto-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_auto_trust[0].json
   tags               = local.all_tags
 }
+
+resource "aws_iam_role_policy" "update_asg_auto" {
+  count  = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  name   = "EC2ASGUpdate"
+  role   = aws_iam_role.update_asg_auto[0].id
+  policy = data.aws_iam_policy_document.update_asg_auto[0].json
+}
+
 
 resource "aws_iam_role_policy_attachment" "update_asg_auto_ssm" {
   count      = try(var.asg.ami.update.enabled, false) ? 1 : 0
