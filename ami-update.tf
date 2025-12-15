@@ -34,7 +34,7 @@ resource "aws_ssm_document" "update_asg" {
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
-  version_name    = "2.0"
+  version_name    = "2.1"
   content         = <<DOC
 description: "Update Auto Scaling Group Launch Template with new AMI"
 schemaVersion: "0.3"
