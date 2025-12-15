@@ -261,10 +261,8 @@ data "aws_iam_policy_document" "update_asg_auto" {
   statement {
     effect = "Allow"
     actions = [
-      "ec2:DescribeImages",
-      "ec2:DescribeTags",
+
       "ec2:ModifyLaunchTemplate",
-      "ec2:DescribeLaunchTemplates",
     ]
     resources = [
       aws_launch_template.this[0].arn
@@ -274,8 +272,10 @@ data "aws_iam_policy_document" "update_asg_auto" {
   statement {
     effect = "Allow"
     actions = [
-      "ec2:CreateLaunchTemplateVersion",
+      "ec2:DescribeImages",
+      "ec2:DescribeLaunchTemplates",
       "ec2:DescribeLaunchTemplateVersions",
+      "ec2:CreateLaunchTemplateVersion",
     ]
     resources = [
       "*"
@@ -289,21 +289,20 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "autoscaling:DescribeAutoScalingGroups",
     ]
     resources = [
-      aws_autoscaling_group.this[0].arn,
-      aws_launch_template.this[0].arn
+      aws_autoscaling_group.this[0].arn
     ]
   }
 
-  statement {
-    effect = "Allow"
-    actions = [
-      "iam:PassRole"
-    ]
-    resources = [
-      aws_iam_instance_profile.this[0].arn,
-      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
-    ]
-  }
+  # statement {
+  #   effect = "Allow"
+  #   actions = [
+  #     "iam:PassRole"
+  #   ]
+  #   resources = [
+  #     aws_iam_instance_profile.this[0].arn,
+  #     "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
+  #   ]
+  # }
 }
 resource "aws_iam_role" "update_asg_auto" {
   count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
