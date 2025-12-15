@@ -262,12 +262,22 @@ data "aws_iam_policy_document" "update_asg_auto" {
     effect = "Allow"
     actions = [
       "ec2:DescribeImages",
-      "ec2:CreateLaunchTemplateVersion",
-      "ec2:DescribeLaunchTemplateVersions",
       "ec2:DescribeTags",
+      "ec2:ModifyLaunchTemplate",
     ]
     resources = [
       aws_launch_template.this[0].arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:CreateLaunchTemplateVersion",
+      "ec2:DescribeLaunchTemplateVersions",
+    ]
+    resources = [
+      "*"
     ]
   }
 
@@ -278,7 +288,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "autoscaling:DescribeAutoScalingGroups",
     ]
     resources = [
-      aws_launch_template.this[0].arn
+      aws_autoscaling_group.this[0].arn
     ]
   }
 }
