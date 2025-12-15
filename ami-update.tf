@@ -42,19 +42,19 @@ resource "aws_ssm_document" "update_asg" {
         description = "The ARN of the role that allows Automation to perform the actions on your behalf."
         default     = ""
       }
-      imageId = {
+      ImageId = {
         type        = "String"
         description = "The ID of the AMI to use for the update."
       }
-      autoscalingGroupName = {
+      AutoscalingGroupName = {
         type        = "String"
         description = "The ARN of the Auto Scaling group to update."
       }
-      launchTemplateId = {
+      LaunchTemplateId = {
         type        = "String"
         description = "The ID of the Launch Template associated with the ASG."
       }
-      tags = {
+      Tags = {
         type        = "Array"
         description = "Tags array to filter instances in the ASG."
         default     = []
@@ -163,10 +163,11 @@ resource "aws_cloudwatch_event_target" "update_asg" {
       resourceId = "$.resources[0]"
     }
     input_template = jsonencode({
-      imageId              = "<resourceId>"
-      autoscalingGroupName = aws_autoscaling_group.this[0].name
-      launchTemplateId     = aws_launch_template.this[0].id
-      tags                 = try(var.asg.ami.filters, [])
+      AutomationAssumeRole = aws_iam_role.update_asg_auto[0].arn
+      ImageId              = "<resourceId>"
+      AutoscalingGroupName = aws_autoscaling_group.this[0].name
+      LaunchTemplateId     = aws_launch_template.this[0].id
+      Tags                 = try(var.asg.ami.filters, [])
     })
   }
 
@@ -218,4 +219,38 @@ resource "aws_iam_role_policy" "update_asg" {
   name   = "SSMLifecycle"
   role   = aws_iam_role.update_asg[0].id
   policy = data.aws_iam_policy_document.update_asg[0].json
+}
+
+## SSM AUTOMATION ROLE
+data "aws_iam_policy_document" "update_asg_auto_trust" {
+  count = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ssm.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:ssm:*:${data.aws_caller_identity.current.account_id}:automation-execution/*"]
+    }
+  }
+}
+
+resource "aws_iam_role" "update_asg_auto" {
+  count              = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  name               = "${local.name}-auto-ssm-role"
+  assume_role_policy = data.aws_iam_policy_document.update_asg_auto_trust[0].json
+}
+
+resource "aws_iam_role_policy_attachment" "update_asg_auto_ssm" {
+  count      = try(var.asg.ami.update_enabled, false) ? 1 : 0
+  role       = aws_iam_role.update_asg_auto[0].id
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole"
 }
