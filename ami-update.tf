@@ -34,7 +34,7 @@ resource "aws_ssm_document" "update_asg" {
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
-  version_name    = "2.1"
+  version_name    = "2.2"
   content         = <<DOC
 description: "Update Auto Scaling Group Launch Template with new AMI"
 schemaVersion: "0.3"
@@ -105,10 +105,15 @@ mainSteps:
                   break
           return matched_count >= required_count
 
+        # function to extract image id from arn
+        def extract_image_id(image_arn):
+          # example arn: arn:aws:ec2:us-east-1:123456789012:image/ami-0abcdef1234567890
+          return image_arn.split('/')[-1]
+
         # Main function
         def update_asg(event, context):
           print("Received event: " + json.dumps(event, indent=2))
-          image_id = event['imageId']
+          image_id = extract_image_id(event['imageId'])
           asg_name = event['autoscalingGroupName']
           launch_template_id = event['launchTemplateId']
           tags = event['tags']
