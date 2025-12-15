@@ -292,6 +292,16 @@ data "aws_iam_policy_document" "update_asg_auto" {
       aws_autoscaling_group.this[0].arn
     ]
   }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:PassRole"
+    ]
+    resources = [
+      aws_iam_instance_profile.this[0].arn
+    ]
+  }
 }
 resource "aws_iam_role" "update_asg_auto" {
   count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
