@@ -7,6 +7,11 @@
 #     Distributed Under Apache v2.0 License
 #
 
+locals {
+  escaped_asg_tags = [
+    for tags in try(var.asg.ami.filters, []) : jsonencode(tags)
+  ]
+}
 data "aws_cloudwatch_event_bus" "default" {
   name = "default"
 }
@@ -192,7 +197,7 @@ resource "aws_cloudwatch_event_target" "update_asg" {
   "ImageId": "<resourceId>",
   "AutoscalingGroupName": "${aws_autoscaling_group.this[0].name}",
   "LaunchTemplateId": "${aws_launch_template.this[0].id}",
-  "Tags": ${jsonencode(try(var.asg.ami.filters, []))}
+  "Tags": ${jsonencode(local.escaped_asg_tags)}
 }
 EOF
   }
@@ -220,7 +225,6 @@ data "aws_iam_policy_document" "update_asg" {
     effect = "Allow"
     actions = [
       "ssm:SendCommand",
-      "ssm:StartAutomationExecution",
     ]
     resources = [
       "arn:aws:ec2:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:instance/*"
@@ -235,6 +239,16 @@ data "aws_iam_policy_document" "update_asg" {
     ]
     resources = [
       aws_ssm_document.update_asg[0].arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "ssm:StartAutomationExecution",
+    ]
+    resources = [
+      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:automation-execution/*",
     ]
   }
 }
