@@ -7,6 +7,11 @@
 #     Distributed Under Apache v2.0 License
 #
 
+locals {
+  escaped_asg_tags = [
+    for tags in try(var.asg.ami.filters, []) : jsonencode(tags)
+  ]
+}
 data "aws_cloudwatch_event_bus" "default" {
   name = "default"
 }
@@ -177,9 +182,9 @@ resource "aws_cloudwatch_event_target" "update_asg" {
   arn            = aws_ssm_document.update_asg[0].arn
   role_arn       = aws_iam_role.update_asg[0].arn
   dynamic "dead_letter_config" {
-    for_each = try(var.asg.ami.auto_update.dead_letter_sns, "") != "" ? [1] : []
+    for_each = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? [1] : []
     content {
-      arn = var.asg.ami.auto_update.dead_letter_sns
+      arn = var.asg.ami.auto_update.dead_letter_sqs
     }
   }
   input_transformer {
@@ -188,11 +193,11 @@ resource "aws_cloudwatch_event_target" "update_asg" {
     }
     input_template = <<EOF
 {
-  "AutomationAssumeRole": "${aws_iam_role.update_asg_auto[0].arn}",
-  "ImageId": "<resourceId>",
-  "AutoscalingGroupName": "${aws_autoscaling_group.this[0].name}",
-  "LaunchTemplateId": "${aws_launch_template.this[0].id}",
-  "Tags": ${jsonencode(try(var.asg.ami.filters, []))}
+  "AutomationAssumeRole": ["${aws_iam_role.update_asg_auto[0].arn}"],
+  "ImageId": ["<resourceId>"],
+  "AutoscalingGroupName": ["${aws_autoscaling_group.this[0].name}"],
+  "LaunchTemplateId": ["${aws_launch_template.this[0].id}"],
+  "Tags": ${jsonencode(local.escaped_asg_tags)}
 }
 EOF
   }
@@ -202,10 +207,14 @@ EOF
 data "aws_iam_policy_document" "update_asg_trust" {
   count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
+    effect  = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
-      type        = "Service"
-      identifiers = ["events.amazonaws.com"]
+      type = "Service"
+      identifiers = [
+        "events.amazonaws.com",
+        "ssm.amazonaws.com",
+      ]
     }
   }
 }
@@ -216,7 +225,6 @@ data "aws_iam_policy_document" "update_asg" {
     effect = "Allow"
     actions = [
       "ssm:SendCommand",
-      "ssm:StartAutomationExecution",
     ]
     resources = [
       "arn:aws:ec2:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:instance/*"
@@ -230,7 +238,42 @@ data "aws_iam_policy_document" "update_asg" {
       "ssm:StartAutomationExecution",
     ]
     resources = [
-      aws_ssm_document.update_asg[0].arn
+      aws_ssm_document.update_asg[0].arn,
+      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:document/${aws_ssm_document.update_asg[0].name}"
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "ssm:StartAutomationExecution",
+    ]
+    resources = [
+      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:automation-execution/*",
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:PassRole"
+    ]
+    resources = [
+      aws_iam_role.update_asg_auto[0].arn,
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "update_asg_sqs" {
+  count = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "sqs:SendMessage",
+      "sqs:GetQueueAttributes",
+    ]
+    resources = [
+      var.asg.ami.auto_update.dead_letter_sqs
     ]
   }
 }
@@ -249,14 +292,26 @@ resource "aws_iam_role_policy" "update_asg" {
   policy = data.aws_iam_policy_document.update_asg[0].json
 }
 
+resource "aws_iam_role_policy" "udpate_asg_sqs" {
+  count  = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
+  name   = "EventDeadLetterSQS"
+  role   = aws_iam_role.update_asg[0].id
+  policy = data.aws_iam_policy_document.update_asg_sqs[0].json
+}
+
+
 ## SSM AUTOMATION ROLE
 data "aws_iam_policy_document" "update_asg_auto_trust" {
   count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
+    effect  = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
-      type        = "Service"
-      identifiers = ["ssm.amazonaws.com"]
+      type = "Service"
+      identifiers = [
+        "ssm.amazonaws.com",
+        "events.amazonaws.com",
+      ]
     }
     condition {
       test     = "StringEquals"
@@ -267,6 +322,16 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
       test     = "ArnLike"
       variable = "aws:SourceArn"
       values   = ["arn:aws:ssm:*:${data.aws_caller_identity.current.account_id}:automation-execution/*"]
+    }
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type = "AWS"
+      identifiers = [
+        aws_iam_role.update_asg[0].arn
+      ]
     }
   }
 }
