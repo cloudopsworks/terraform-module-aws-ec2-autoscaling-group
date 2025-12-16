@@ -238,7 +238,8 @@ data "aws_iam_policy_document" "update_asg" {
       "ssm:StartAutomationExecution",
     ]
     resources = [
-      aws_ssm_document.update_asg[0].arn
+      aws_ssm_document.update_asg[0].arn,
+      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:document/${aws_ssm_document.update_asg[0].name}"
     ]
   }
 
