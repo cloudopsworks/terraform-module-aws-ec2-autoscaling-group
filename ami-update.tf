@@ -12,7 +12,7 @@ data "aws_cloudwatch_event_bus" "default" {
 }
 
 resource "aws_cloudwatch_event_rule" "update_asg" {
-  count          = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count          = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name           = "${local.name}-asg-upd-rule"
   description    = "Event Rule to trigger AMI update for ASG ${local.name}"
   event_bus_name = data.aws_cloudwatch_event_bus.default.name
@@ -29,7 +29,7 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
 }
 
 resource "aws_ssm_document" "update_asg" {
-  count           = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count           = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name            = "${local.name}-asg-upd-ssm-doc"
   document_type   = "Automation"
   document_format = "YAML"
@@ -170,7 +170,7 @@ DOC
 }
 
 resource "aws_cloudwatch_event_target" "update_asg" {
-  count          = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count          = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   rule           = aws_cloudwatch_event_rule.update_asg[0].name
   event_bus_name = data.aws_cloudwatch_event_bus.default.name
   target_id      = "${local.name}-asg-upd-target"
@@ -194,7 +194,7 @@ EOF
 
 ### SSM ROLE
 data "aws_iam_policy_document" "update_asg_trust" {
-  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
     actions = ["sts:AssumeRole"]
     principals {
@@ -205,7 +205,7 @@ data "aws_iam_policy_document" "update_asg_trust" {
 }
 
 data "aws_iam_policy_document" "update_asg" {
-  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
     effect = "Allow"
     actions = [
@@ -228,14 +228,14 @@ data "aws_iam_policy_document" "update_asg" {
 }
 
 resource "aws_iam_role" "update_asg" {
-  count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count              = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name               = "${local.name}-eventbridge-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_trust[0].json
   tags               = local.all_tags
 }
 
 resource "aws_iam_role_policy" "update_asg" {
-  count  = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count  = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name   = "SSMLifecycle"
   role   = aws_iam_role.update_asg[0].id
   policy = data.aws_iam_policy_document.update_asg[0].json
@@ -243,7 +243,7 @@ resource "aws_iam_role_policy" "update_asg" {
 
 ## SSM AUTOMATION ROLE
 data "aws_iam_policy_document" "update_asg_auto_trust" {
-  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
     actions = ["sts:AssumeRole"]
     principals {
@@ -264,7 +264,7 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
 }
 
 data "aws_iam_policy_document" "update_asg_auto" {
-  count = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
     effect = "Allow"
     actions = [
@@ -313,14 +313,14 @@ data "aws_iam_policy_document" "update_asg_auto" {
   }
 }
 resource "aws_iam_role" "update_asg_auto" {
-  count              = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count              = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name               = "${local.name}-auto-ssm-role"
   assume_role_policy = data.aws_iam_policy_document.update_asg_auto_trust[0].json
   tags               = local.all_tags
 }
 
 resource "aws_iam_role_policy" "update_asg_auto" {
-  count  = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count  = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name   = "EC2ASGUpdate"
   role   = aws_iam_role.update_asg_auto[0].id
   policy = data.aws_iam_policy_document.update_asg_auto[0].json
@@ -328,7 +328,7 @@ resource "aws_iam_role_policy" "update_asg_auto" {
 
 
 resource "aws_iam_role_policy_attachment" "update_asg_auto_ssm" {
-  count      = try(var.asg.ami.update.enabled, false) ? 1 : 0
+  count      = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   role       = aws_iam_role.update_asg_auto[0].id
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole"
 }
