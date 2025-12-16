@@ -34,7 +34,7 @@ resource "aws_ssm_document" "update_asg" {
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
-  version_name    = "2.7"
+  version_name    = "2.8"
   content         = <<DOC
 description: "Update Auto Scaling Group Launch Template with new AMI"
 schemaVersion: "0.3"
@@ -126,7 +126,14 @@ mainSteps:
               Versions=['$Latest']
             )
             last_version = response['LaunchTemplateVersions'][0]['VersionNumber']
-            print(f"Latest Launch Template version: {last_version}")
+            last_image_id = response['LaunchTemplateVersions'][0]['LaunchTemplateData']['ImageId']
+            print(f"Latest Launch Template version: {last_version} with AMI {last_image_id}")
+            if last_image_id == image_id:
+              print("Launch Template already uses the latest AMI. No update needed.")
+              return {
+                'statusCode': 200,
+                'body': 'Launch Template already up to date. No action taken.'
+              }
             response = ec2.create_launch_template_version(
               LaunchTemplateId=launch_template_id,
               SourceVersion=str(last_version),
