@@ -209,7 +209,8 @@ data "aws_iam_policy_document" "update_asg" {
   statement {
     effect = "Allow"
     actions = [
-      "ssm:SendCommand"
+      "ssm:SendCommand",
+      "ssm:StartAutomationExecution",
     ]
     resources = [
       "arn:aws:ec2:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:instance/*"
@@ -219,7 +220,8 @@ data "aws_iam_policy_document" "update_asg" {
   statement {
     effect = "Allow"
     actions = [
-      "ssm:SendCommand"
+      "ssm:SendCommand",
+      "ssm:StartAutomationExecution",
     ]
     resources = [
       aws_ssm_document.update_asg[0].arn
