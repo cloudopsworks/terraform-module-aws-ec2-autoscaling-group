@@ -7,6 +7,7 @@
 #     Distributed Under Apache v2.0 License
 #
 data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {}
 
 locals {
   iam_role_name = "${local.name}-asg-role"
