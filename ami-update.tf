@@ -300,7 +300,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "iam:PassRole"
     ]
     resources = [
-      aws_iam_instance_profile.this[0].arn,
+      aws_iam_role.this[0].arn,
     ]
   }
 }
