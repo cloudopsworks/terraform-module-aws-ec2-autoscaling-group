@@ -268,7 +268,6 @@ data "aws_iam_policy_document" "update_asg_auto" {
   statement {
     effect = "Allow"
     actions = [
-
       "ec2:ModifyLaunchTemplate",
     ]
     resources = [
@@ -299,6 +298,20 @@ data "aws_iam_policy_document" "update_asg_auto" {
     ]
     resources = [
       aws_autoscaling_group.this[0].arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "logs:DescribeLogStreams",
+      "logs:DescribeLogGroups",
+    ]
+    resources = [
+      "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:*"
     ]
   }
 
