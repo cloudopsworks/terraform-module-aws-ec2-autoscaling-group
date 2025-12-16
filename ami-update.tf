@@ -252,6 +252,16 @@ data "aws_iam_policy_document" "update_asg" {
       "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:automation-execution/*",
     ]
   }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:PassRole"
+    ]
+    resources = [
+      aws_iam_role.this[0].arn,
+    ]
+  }
 }
 
 data "aws_iam_policy_document" "update_asg_sqs" {
@@ -284,7 +294,7 @@ resource "aws_iam_role_policy" "update_asg" {
 
 resource "aws_iam_role_policy" "udpate_asg_sqs" {
   count  = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
-  name   = "EventDeadLetterSNS"
+  name   = "EventDeadLetterSQS"
   role   = aws_iam_role.update_asg[0].id
   policy = data.aws_iam_policy_document.update_asg_sqs[0].json
 }
