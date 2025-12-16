@@ -80,6 +80,9 @@ usage: |-
         filters = [                            # (Optional) Extra describe-images filters
           # { name = "tag:Build", values = ["2025-*"] }
         ]
+        auto_update = {                        # (Optional) EventBridge + SSM Automation to update LT when a new AMI is detected
+          enabled = false                      # (Optional) Default: false
+        }
       }
 
       user_data        = ""                    # (Optional) Plain-text user data; auto base64 when non-empty
@@ -134,6 +137,7 @@ usage: |-
         subnet_ids        = ["subnet-aaa", "subnet-bbb"]  # (Required) ASG subnets
         subnet_id         = null                              # (Conditionally required) When security_group.create = true
         security_group_ids= []                                # (Optional) Extra SGs to attach
+        availability_zones= null                              # (Optional) Explicit AZs list; default inferred from subnets
       }
 
       security_group = {                      # (Optional) Module-managed SG + rules
@@ -156,11 +160,17 @@ usage: |-
       min_size         = 1                     # (Optional) Default: 1
       max_size         = 1                     # (Optional) Default: 1
       desired_capacity = 1                     # (Optional) Alias: desired. Default: 1
+      enabled_metrics  = null                  # (Optional) ASG metrics to enable (e.g., ["GroupMinSize", "GroupMaxSize"]) Default: null
+      termination_policies = null              # (Optional) Termination policies list. Default: AWS default
+      suspended_processes  = null              # (Optional) Processes to suspend (e.g., ["AZRebalance"]). Default: null
       health_check = {
         type          = "ELB"                 # (Optional) EC2|ELB. Default: ELB
         grace_period  = 300                   # (Optional) Default: 300
       }
       force_delete = false                     # (Optional) Default: false
+
+      # Optional distribution strategy across AZs
+      availability_zone_distribution = null     # (Optional) balanced|prioritized. Default: null
 
       mixed_instances = false                  # (Optional) Use Mixed Instances Policy. Default: false
       instance_types = [                       # (Conditionally required) When mixed_instances = true
@@ -233,6 +243,7 @@ usage: |-
   - Required: `org` and `asg.vpc.subnet_ids`, and one of `asg.ami.id` or `asg.ami.name`.
   - Conditional: `asg.vpc.subnet_id` when `asg.security_group.create = true`.
   - Conditional: `asg.type` unless using `instance_requirements` and not using `mixed_instances`.
+  - AMI auto-update: when `asg.ami.auto_update.enabled = true`, the module creates an EventBridge rule and SSM Automation document to update the Launch Template to the latest AMI that matches `asg.ami.filters` after backup completion events. Ensure your AMIs carry the tags you filter on.
 
 # Example usage
 examples: |-

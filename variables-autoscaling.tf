@@ -35,6 +35,8 @@ variable "name_prefix" {
 #     filters:  # (Optional) Additional filters for AMI lookup.
 #       - name: "tag:Build"  # (Optional) Filter name as supported by EC2 describe-images API (e.g., name, tag:*, architecture, etc.).
 #         values: ["2025-*"]  # (Optional) Values for the above filter.
+#     auto_update:  # (Optional) Enable automated AMI roll-out via EventBridge + SSM Automation.
+#       enabled: true | false  # (Optional) When true, creates EventBridge rule and SSM doc to update the Launch Template to the latest AMI matching filters on backup completion events. Default: false.
 #
 #   user_data: |  # (Optional) Plain-text user data. Will be base64-encoded automatically if non-empty.
 #     #!/bin/bash
@@ -88,6 +90,7 @@ variable "name_prefix" {
 #     subnet_ids: ["subnet-aaa", "subnet-bbb"]  # (Required) Subnet IDs where instances will be launched.
 #     subnet_id: "subnet-aaa"  # (Conditionally required) Required when security_group.create = true, to derive VPC ID.
 #     security_group_ids: ["sg-0123456789abcdef0"]  # (Optional) Additional SGs to attach along with the module-created SG (if any).
+#     availability_zones: ["us-east-1a", "us-east-1b"]  # (Optional) Explicit AZs for the ASG. Default: provider computes from subnets.
 #
 #   security_group:  # (Optional) Module-managed Security Group and its rules.
 #     create: true | false  # (Optional) Create a security group. Default: false.
@@ -106,10 +109,14 @@ variable "name_prefix" {
 #   min_size: 1  # (Optional) Minimum number of instances in the ASG. Default: 1.
 #   max_size: 2  # (Optional) Maximum number of instances in the ASG. Default: 1.
 #   desired_capacity: 1  # (Optional) Desired capacity (alias: asg.desired). Default: 1.
+#   enabled_metrics: ["GroupMinSize", "GroupMaxSize", "GroupDesiredCapacity"]  # (Optional) List of ASG metrics to collect. Default: null (none).
+#   termination_policies: ["OldestInstance", "OldestLaunchTemplate", "ClosestToNextInstanceHour", "Default"]  # (Optional) Termination policies. Default: null (AWS default).
+#   suspended_processes: ["HealthCheck", "AZRebalance", "ReplaceUnhealthy", "AlarmNotification", "ScheduledActions", "AddToLoadBalancer"]  # (Optional) Processes to suspend. Default: null.
 #   health_check:  # (Optional) Health check configuration for the ASG.
 #     type: "EC2" | "ELB"  # (Optional) Health check type. Default: "ELB".
 #     grace_period: 300  # (Optional) Seconds to ignore unhealthy checks after launch. Default: 300.
 #   force_delete: true | false  # (Optional) Force delete the ASG and all instances. Default: false.
+#   availability_zone_distribution: "balanced" | "prioritized"  # (Optional) Capacity distribution strategy across AZs. Default: null.
 #
 #   mixed_instances: true | false  # (Optional) Use Mixed Instances Policy with overrides. Default: false.
 #   instance_types:  # (Conditionally required) Overrides; required when mixed_instances = true.
