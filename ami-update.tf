@@ -259,7 +259,7 @@ data "aws_iam_policy_document" "update_asg" {
       "iam:PassRole"
     ]
     resources = [
-      aws_iam_role.this[0].arn,
+      aws_iam_role.update_asg_auto[0].arn,
     ]
   }
 }
