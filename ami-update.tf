@@ -176,6 +176,12 @@ resource "aws_cloudwatch_event_target" "update_asg" {
   target_id      = "${local.name}-asg-upd-target"
   arn            = aws_ssm_document.update_asg[0].arn
   role_arn       = aws_iam_role.update_asg[0].arn
+  dynamic "dead_letter_config" {
+    for_each = try(var.asg.ami.auto_update.dead_letter_sns, "") != "" ? [1] : []
+    content {
+      arn = var.asg.ami.auto_update.dead_letter_sns
+    }
+  }
   input_transformer {
     input_paths = {
       resourceId = "$.resources[0]"
