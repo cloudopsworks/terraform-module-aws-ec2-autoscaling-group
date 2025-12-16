@@ -283,7 +283,7 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
     principals {
       type        = "AWS"
       identifiers = [
-        aws_iam_role.update_asg.arn
+        aws_iam_role.update_asg[0].arn
       ]
     }
   }
