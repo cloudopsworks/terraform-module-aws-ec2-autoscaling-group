@@ -193,10 +193,10 @@ resource "aws_cloudwatch_event_target" "update_asg" {
     }
     input_template = <<EOF
 {
-  "AutomationAssumeRole": "${aws_iam_role.update_asg_auto[0].arn}",
-  "ImageId": "<resourceId>",
-  "AutoscalingGroupName": "${aws_autoscaling_group.this[0].name}",
-  "LaunchTemplateId": "${aws_launch_template.this[0].id}",
+  "AutomationAssumeRole": ["${aws_iam_role.update_asg_auto[0].arn}"],
+  "ImageId": ["<resourceId>"],
+  "AutoscalingGroupName": ["${aws_autoscaling_group.this[0].name}"],
+  "LaunchTemplateId": ["${aws_launch_template.this[0].id}"],
   "Tags": ${jsonencode(local.escaped_asg_tags)}
 }
 EOF
