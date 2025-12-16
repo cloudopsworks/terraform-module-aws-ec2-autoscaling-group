@@ -177,9 +177,9 @@ resource "aws_cloudwatch_event_target" "update_asg" {
   arn            = aws_ssm_document.update_asg[0].arn
   role_arn       = aws_iam_role.update_asg[0].arn
   dynamic "dead_letter_config" {
-    for_each = try(var.asg.ami.auto_update.dead_letter_sns, "") != "" ? [1] : []
+    for_each = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? [1] : []
     content {
-      arn = var.asg.ami.auto_update.dead_letter_sns
+      arn = var.asg.ami.auto_update.dead_letter_sqs
     }
   }
   input_transformer {
@@ -202,10 +202,10 @@ EOF
 data "aws_iam_policy_document" "update_asg_trust" {
   count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
-    effect = "Allow"
+    effect  = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
-      type        = "Service"
+      type = "Service"
       identifiers = [
         "events.amazonaws.com",
         "ssm.amazonaws.com",
@@ -239,6 +239,20 @@ data "aws_iam_policy_document" "update_asg" {
   }
 }
 
+data "aws_iam_policy_document" "update_asg_sqs" {
+  count = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "sqs:SendMessage",
+      "sqs:GetQueueAttributes",
+    ]
+    resources = [
+      var.asg.ami.auto_update.dead_letter_sqs
+    ]
+  }
+}
+
 resource "aws_iam_role" "update_asg" {
   count              = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   name               = "${local.name}-eventbridge-ssm-role"
@@ -253,14 +267,22 @@ resource "aws_iam_role_policy" "update_asg" {
   policy = data.aws_iam_policy_document.update_asg[0].json
 }
 
+resource "aws_iam_role_policy" "udpate_asg_sqs" {
+  count  = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
+  name   = "EventDeadLetterSNS"
+  role   = aws_iam_role.update_asg[0].id
+  policy = data.aws_iam_policy_document.update_asg_sqs[0].json
+}
+
+
 ## SSM AUTOMATION ROLE
 data "aws_iam_policy_document" "update_asg_auto_trust" {
   count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
-    effect = "Allow"
+    effect  = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
-      type        = "Service"
+      type = "Service"
       identifiers = [
         "ssm.amazonaws.com",
         "events.amazonaws.com",
@@ -278,10 +300,10 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
     }
   }
   statement {
-    effect = "Allow"
+    effect  = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
-      type        = "AWS"
+      type = "AWS"
       identifiers = [
         aws_iam_role.update_asg[0].arn
       ]
