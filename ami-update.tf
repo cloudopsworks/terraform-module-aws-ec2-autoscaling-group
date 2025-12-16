@@ -202,10 +202,14 @@ EOF
 data "aws_iam_policy_document" "update_asg_trust" {
   count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
+    effect = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
       type        = "Service"
-      identifiers = ["events.amazonaws.com"]
+      identifiers = [
+        "events.amazonaws.com",
+        "ssm.amazonaws.com",
+      ]
     }
   }
 }
@@ -253,10 +257,14 @@ resource "aws_iam_role_policy" "update_asg" {
 data "aws_iam_policy_document" "update_asg_auto_trust" {
   count = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
   statement {
+    effect = "Allow"
     actions = ["sts:AssumeRole"]
     principals {
       type        = "Service"
-      identifiers = ["ssm.amazonaws.com"]
+      identifiers = [
+        "ssm.amazonaws.com",
+        "events.amazonaws.com",
+      ]
     }
     condition {
       test     = "StringEquals"
@@ -267,6 +275,16 @@ data "aws_iam_policy_document" "update_asg_auto_trust" {
       test     = "ArnLike"
       variable = "aws:SourceArn"
       values   = ["arn:aws:ssm:*:${data.aws_caller_identity.current.account_id}:automation-execution/*"]
+    }
+  }
+  statement {
+    effect = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "AWS"
+      identifiers = [
+        aws_iam_role.update_asg.arn
+      ]
     }
   }
 }
