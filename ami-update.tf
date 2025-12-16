@@ -277,6 +277,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "ec2:DescribeLaunchTemplateVersions",
       "ec2:CreateLaunchTemplateVersion",
       "ec2:CreateTags",
+      "ec2:RunInstances",
     ]
     resources = [
       "*"
