@@ -293,7 +293,7 @@ resource "aws_iam_role_policy" "update_asg" {
 }
 
 resource "aws_iam_role_policy" "udpate_asg_sqs" {
-  count  = try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
+  count  = try(var.asg.ami.auto_update.enabled, false) && try(var.asg.ami.auto_update.dead_letter_sqs, "") != "" ? 1 : 0
   name   = "EventDeadLetterSQS"
   role   = aws_iam_role.update_asg[0].id
   policy = data.aws_iam_policy_document.update_asg_sqs[0].json
