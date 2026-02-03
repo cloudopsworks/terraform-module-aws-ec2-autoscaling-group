@@ -52,7 +52,7 @@ resource "aws_iam_role_policy_attachment" "this" {
 resource "aws_iam_role_policy" "logs" {
   count = try(var.asg.create, true) && try(var.iam.create, true) && try(var.iam.logs_enabled, false) ? 1 : 0
   role  = aws_iam_role.this[0].name
-  name  = "CloudWatcjhLogsPolicy"
+  name  = "CloudWatchDeliverLogsPolicy"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
