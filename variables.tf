@@ -7,12 +7,16 @@
 #     Distributed Under Apache v2.0 License
 #
 # Establish this is a HUB or spoke configuration
+##
+# is_hub: false # (Optional) Is this a hub or spoke configuration? Default: false.
 variable "is_hub" {
   description = "Is this a hub or spoke configuration?"
   type        = bool
   default     = false
 }
 
+##
+# spoke_def: "001" # (Optional) Spoke ID Number, must be a 3 digit number. Default: "001".
 variable "spoke_def" {
   description = "Spoke ID Number, must be a 3 digit number"
   type        = string
@@ -23,6 +27,12 @@ variable "spoke_def" {
   }
 }
 
+##
+# org: # (Required) Organization details.
+#   organization_name: "my-org" # (Required) Organization name.
+#   organization_unit: "my-unit" # (Required) Organization unit.
+#   environment_type: "prod" # (Required) Environment type.
+#   environment_name: "my-env" # (Required) Environment name.
 variable "org" {
   description = "Organization details"
   type = object({
@@ -33,6 +43,8 @@ variable "org" {
   })
 }
 
+##
+# extra_tags: {} # (Optional) Extra tags to add to the resources. Default: {}.
 variable "extra_tags" {
   description = "Extra tags to add to the resources"
   type        = map(string)

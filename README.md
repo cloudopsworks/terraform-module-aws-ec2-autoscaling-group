@@ -73,238 +73,289 @@ organization conventions and tagging strategy.
 Instead pin to the release tag (e.g. `?ref=vX.Y.Z`) of one of our [latest releases](https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group/releases).
 
 
-Terragrunt usage (recommended)
+### Terragrunt Usage (Recommended)
 
-Create a `terragrunt.hcl` in your live environment with the module source and
-`inputs` fully documented below. Inline comments indicate (Required) vs
-(Optional), meaning, defaults, and allowed values.
+To use this module with Terragrunt, create a `terragrunt.hcl` in your live environment
+and provide the inputs as shown below. The module expects a structured `asg` object
+for most configurations.
 
 ```hcl
 terraform {
-  # Pin to a tag or commit in your organization
   source = "git::https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group.git//?ref=vX.Y.Z"
 }
 
 inputs = {
-  # Top-level inputs
-  is_hub    = false                         # (Optional) Is this a hub deployment? Default: false.
-  spoke_def = "001"                         # (Optional) 3-digit spoke identifier. Default: "001".
+  # is_hub: false # (Optional) Is this a hub or spoke configuration? Default: false.
+  is_hub = false
 
-  org = {                                   # (Required) Organization context used for naming/tags
+  # spoke_def: "001" # (Optional) Spoke ID Number, must be a 3 digit number. Default: "001".
+  spoke_def = "001"
+
+  # org: # (Required) Organization details used for naming and tagging.
+  org = {
     organization_name = "acme"             # (Required) Organization name
     organization_unit = "platform"         # (Required) Business unit or OU
-    environment_type  = "prod"             # (Required) Env type, e.g., dev|stage|prod
+    environment_type  = "prod"             # (Required) Env type (dev|stage|prod)
     environment_name  = "payments"         # (Required) Environment name
   }
 
-  extra_tags = {                            # (Optional) Extra tags for all resources. Default: {}
-    Owner = "you@example.com"
+  # extra_tags: {} # (Optional) Extra tags to add to all resources. Default: {}.
+  extra_tags = {
+    Owner = "platform-team@acme.com"
   }
 
-  # Resource naming
-  name        = "payments-web"              # (Optional) Base name; used when name_prefix is empty. Default: ""
-  name_prefix = "plat-payments"             # (Optional) Name prefix; if set, final name becomes "<prefix>-<system_name>". Default: ""
+  # name: "my-asg" # (Optional) The name of the EC2 Instance/ASG. Default: "".
+  name = "payments-api"
 
-  # Core ASG configuration
-  asg = {                                    # (Optional) Create when asg.create = true (default)
+  # asg: # (Optional) Auto Scaling Group and Launch Template configuration.
+  asg = {
     create = true                            # (Optional) Default: true
+    type   = "t3.micro"                      # (Conditionally required) Fixed instance type
 
-    # Launch Template basics
-    type = "t3.micro"                       # (Conditionally required) Fixed instance type unless using instance_requirements and mixed_instances = false
-    ami = {                                  # (Conditionally required) Provide one of id or name
-      id            = null                   # (Optional) AMI ID (overrides name lookup if set)
-      name          = "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*" # (Optional)
-      architecture  = "x86_64"              # (Optional) x86_64|arm64. Default: x86_64
-      most_recent   = true                   # (Optional) Default: true
-      owners        = ["amazon"]            # (Optional) self|amazon|aws-marketplace|<account-id>. Default: ["self"]
-      filters = [                            # (Optional) Extra describe-images filters
-        # { name = "tag:Build", values = ["2025-*"] }
-      ]
-      auto_update = {                        # (Optional) EventBridge + SSM Automation to update LT when a new AMI is detected
-        enabled = false                      # (Optional) Default: false
-      }
+    ami = {                                  # (Required) AMI selection logic
+      id           = null                    # (Optional) Specific AMI ID
+      name         = "ubuntu/images/*"      # (Optional) AMI name pattern
+      owners       = ["099720109477"]        # (Optional) AMI owners (e.g., Canonical)
+      most_recent  = true                    # (Optional) Default: true
     }
 
-    user_data        = ""                    # (Optional) Plain-text user data; auto base64 when non-empty
-    user_data_base64 = null                  # (Optional) Used only when user_data is empty
-    monitoring       = false                 # (Optional) Detailed monitoring. Default: false
-
-    ebs = {                                  # (Optional) Block device mappings
-      ebs_optimized = null                   # (Optional) Default: provider/AMI default
-      block_device = [
-        # {
-        #   device_name          = "/dev/xvda"          # (Required)
-        #   volume_size          = 8                     # (Required)
-        #   volume_type          = "gp3"                # (Optional) gp3|gp2|io1|io2|sc1|st1|standard. Default: gp3
-        #   iops                 = 3000                  # (Optional) Required for io1/io2
-        #   throughput           = 125                   # (Optional) gp3 only
-        #   encrypted            = false                 # (Optional) Default: false
-        #   kms_key_id           = null                  # (Optional)
-        #   delete_on_termination= true                  # (Optional) Default: true
-        #   no_device            = false                 # (Optional)
-        #   virtual_name         = null                  # (Optional)
-        # }
-      ]
+    vpc = {                                  # (Required) Networking configuration
+      subnet_ids = ["subnet-12345678", "subnet-87654321"] # (Required)
     }
 
-    spot = {                                # (Optional) Spot market
-      enabled                = false        # (Optional) Default: false
-      interruption_behavior  = "terminate"  # (Optional) hibernate|stop|terminate. Default: terminate
-      instance_type          = null         # (Optional) one-time|persistent
-      block_duration_minutes = null         # (Optional) 60|120|180|240|300|360
-    }
+    min_size         = 2                     # (Optional) Default: 1
+    max_size         = 5                     # (Optional) Default: 1
+    desired_capacity = 2                     # (Optional) Default: 1
 
-    instance_requirements = {               # (Optional) Flexible instance selection
-      instance_types = null                 # (Optional) e.g., ["t3a.micro", "t3a.small"]
-      memory_mib = { min = 0, max = null }  # (Optional) Defaults: min=0, max=null
-      vcpu_count = { min = 0, max = null }  # (Optional) Defaults: min=0, max=null
-    }
-
-    metadata_options = {                    # (Optional) IMDS options
-      http_endpoint               = "enabled"   # (Optional) enabled|disabled
-      http_put_response_hop_limit = 1           # (Optional) 1..64
-      http_tokens                 = "optional"  # (Optional) required|optional
-      instance_metadata_tags      = null        # (Optional) enabled|disabled (provider default when null)
-    }
-
-    key_pair = {                            # (Optional) Module-managed key pair
-      create = false                        # (Optional) Default: false
-      name   = "key/${"${"}"local.name}${""}" # (Optional) Default: key/${local.name}
-    }
-    secrets_manager_enabled = true          # (Optional) Save keys to Secrets Manager when key_pair.create = true. Default: true
-
-    vpc = {                                 # (Required) Networking
-      subnet_ids        = ["subnet-aaa", "subnet-bbb"]  # (Required) ASG subnets
-      subnet_id         = null                              # (Conditionally required) When security_group.create = true
-      security_group_ids= []                                # (Optional) Extra SGs to attach
-      availability_zones= null                              # (Optional) Explicit AZs list; default inferred from subnets
-    }
-
-    security_group = {                      # (Optional) Module-managed SG + rules
-      create = false
-      rules = {
-        # ssh-ingress = {
-        #   description              = "Allow SSH"
-        #   type                     = "ingress"          # ingress|egress. Default: ingress
-        #   protocol                 = "tcp"             # tcp|udp|icmp|icmpv6|-1. Default: -1
-        #   from_port                = 22                # Default: 0
-        #   to_port                  = 22                # Default: 0
-        #   cidr_blocks              = ["0.0.0.0/0"]     # Provide one of: cidr_blocks|ipv6_cidr_blocks|self|source_security_group_id
-        #   ipv6_cidr_blocks         = []
-        #   self                     = false
-        #   source_security_group_id = null
-        # }
-      }
-    }
-
-    min_size         = 1                     # (Optional) Default: 1
-    max_size         = 1                     # (Optional) Default: 1
-    desired_capacity = 1                     # (Optional) Alias: desired. Default: 1
-    enabled_metrics  = null                  # (Optional) ASG metrics to enable (e.g., ["GroupMinSize", "GroupMaxSize"]) Default: null
-    termination_policies = null              # (Optional) Termination policies list. Default: AWS default
-    suspended_processes  = null              # (Optional) Processes to suspend (e.g., ["AZRebalance"]). Default: null
-    health_check = {
-      type          = "ELB"                 # (Optional) EC2|ELB. Default: ELB
-      grace_period  = 300                   # (Optional) Default: 300
-    }
-    force_delete = false                     # (Optional) Default: false
-
-    # Optional distribution strategy across AZs
-    availability_zone_distribution = null     # (Optional) balanced|prioritized. Default: null
-
-    mixed_instances = false                  # (Optional) Use Mixed Instances Policy. Default: false
-    instance_types = [                       # (Conditionally required) When mixed_instances = true
-      # { type = "t3a.micro", capacity = "1" }
-    ]
-
-    instance_refresh = {                     # (Optional)
-      enabled                 = false        # Default: false
-      strategy                = "Rolling"    # Allowed: Rolling. Default: Rolling
-      min_healthy_percentage  = 90           # Default: 90
-      max_healthy_percentage  = null         # Default: null
-      instance_warmup         = null         # Default: null
-      triggers                = null         # e.g., ["launch_template", "tag"]
-    }
-
-    extra_tags = {                           # (Optional) Additional instance tags
-      # Owner = "you@example.com"
-    }
-
-    backup = {                               # (Optional) Backup discovery tagging
-      enabled   = false                      # Default: false
-      only_tag  = true                       # Default: true
-      schedule  = "daily"                   # hourly|daily|weekly|monthly. Default: daily
-    }
-
-    scaling_policies = [                     # (Optional) ASG policies
-      # {
-      #   name                = "cpu-target"
-      #   adjustment_type     = "ChangeInCapacity"      # Optional
-      #   scaling_adjustment  = 1                        # Optional
-      #   cooldown            = 300                      # Optional
-      #   tracking_configuration = {                     # Optional target tracking
-      #     target_value = 50.0
-      #     predefined = { metric_type = "ASGAverageCPUUtilization" } # or ALB metric with resource_label
-      #     # customized = {
-      #     #   metrics = [ { id = "m1", metric_stat = { metric = { namespace="AWS/EC2", metric_name="CPUUtilization", dimensions=[] }, stat="Average", period=60 } } ]
-      #     # }
-      #   }
-      #   # predictive_scaling = {
-      #   #   target_value = 50.0
-      #   #   metric_pair  = { metric_type = "ALBRequestCountPerTarget", resource_label = "app/..../..." }
-      #   # }
-      # }
-    ]
+    monitoring = true                        # (Optional) Detailed monitoring. Default: false
   }
-
-  # Operation timeouts for ASG
-  timeouts = {                               # (Optional)
-    update = "20m"                           # (Optional) Default: 20m
-    delete = "20m"                           # (Optional) Default: 20m
-  }
-
-  # IAM Role/Instance Profile for EC2
-  iam = {                                    # (Optional) Create when iam.create = true (default)
-    create               = true              # (Optional) Default: true
-    path                 = null              # (Optional)
-    role_description     = "IAM Instance Role <computed>" # (Optional)
-    permissions_boundary = null              # (Optional)
-    role_policies = {                        # (Optional) Map of managed policy ARNs
-      # CWAgent = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-    }
-    extra_tags = {                           # (Optional)
-      # Team = "Platform"
+  
+  # iam: # (Optional) IAM configuration for instances.
+  iam = {
+    create = true                            # (Optional) Default: true
+    role_policies = {
+      CWAgent = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
     }
   }
 }
 ```
 
-Notes
-- Required: `org` and `asg.vpc.subnet_ids`, and one of `asg.ami.id` or `asg.ami.name`.
-- Conditional: `asg.vpc.subnet_id` when `asg.security_group.create = true`.
-- Conditional: `asg.type` unless using `instance_requirements` and not using `mixed_instances`.
-- AMI auto-update: when `asg.ami.auto_update.enabled = true`, the module creates an EventBridge rule and SSM Automation document to update the Launch Template to the latest AMI that matches `asg.ami.filters` after backup completion events. Ensure your AMIs carry the tags you filter on.
+### Full YAML Configuration Reference
+
+The following YAML structure represents all available configuration options for the module.
+You can use this as a reference when building your `inputs` for Terragrunt.
+
+```yaml
+is_hub: false # (Optional) Is this a hub or spoke configuration? Default: false.
+spoke_def: "001" # (Optional) Spoke ID Number, must be a 3 digit number. Default: "001".
+org: # (Required) Organization details.
+  organization_name: "my-org" # (Required) Organization name.
+  organization_unit: "my-unit" # (Required) Organization unit.
+  environment_type: "prod" # (Required) Environment type.
+  environment_name: "my-env" # (Required) Environment name.
+extra_tags: {} # (Optional) Extra tags to add to the resources. Default: {}.
+name: "" # (Optional) The name of the EC2 Instance. Default: "".
+name_prefix: "" # (Optional) The name prefix of the EC2 Instance. Default: "".
+asg:  # (Optional) Auto Scaling Group and Launch Template configuration. Created when asg.create = true (default).
+  create: true  # (Optional) Whether to create ASG resources. Default: true.
+  type: "t3.micro"  # (Optional) Instance type for the Launch Template. Required if not using asg.instance_requirements and asg.mixed_instances = false.
+  ami:  # (Required) AMI selection. One of ami.id or ami.name must be provided to resolve an AMI.
+    id: "ami-0123456789abcdef0"  # (Optional) AMI ID. If set, takes precedence over ami.name.
+    name: "my-ami-*"  # (Optional) AMI name/pattern to search for when ami.id is not provided.
+    architecture: "x86_64"  # (Optional) Restrict search by architecture. Default: "x86_64". Allowed values: "x86_64", "arm64".
+    most_recent: true  # (Optional) Select most recent AMI when using name/filters. Default: true.
+    owners: ["self"]  # (Optional) AMI owners to search. Default: ["self"]. Allowed values: "self", "amazon", "aws-marketplace", or specific AWS account IDs.
+    filters:  # (Optional) Additional filters for AMI lookup.
+      - name: "tag:Build"  # (Optional) Filter name as supported by EC2 describe-images API (e.g., name, tag:*, architecture, etc.).
+        values: ["2025-*"]  # (Optional) Values for the above filter.
+    auto_update:  # (Optional) Enable automated AMI roll-out via EventBridge + SSM Automation.
+      enabled: false  # (Optional) When true, creates EventBridge rule and SSM doc to update the Launch Template to the latest AMI matching filters on backup completion events. Default: false.
+  user_data: |  # (Optional) Plain-text user data. Will be base64-encoded automatically if non-empty. Default: "".
+    #!/bin/bash
+    echo "hello"
+  user_data_base64: ""  # (Optional) Base64-encoded user data. Used only when user_data is empty. Default: "".
+  monitoring: false  # (Optional) Detailed monitoring for instances (Launch Template). Default: false.
+  ebs:  # (Optional) EBS and block device settings for the Launch Template.
+    ebs_optimized: true  # (Optional) Enable EBS optimization. Default: AWS/AMI default.
+    block_device:  # (Optional) List of block device mappings.
+      - device_name: "/dev/xvda"  # (Required) Device name as recognized by the OS.
+        volume_size: 8  # (Required) EBS volume size in GiB.
+        volume_type: "gp3"  # (Optional) Default: "gp3". Allowed values: "gp3", "gp2", "io1", "io2", "sc1", "st1", "standard".
+        iops: 3000  # (Optional) IOPS (required for io1/io2, ignored for gp2/gp3 unless specified).
+        throughput: 125  # (Optional) MiB/s throughput (gp3 only).
+        encrypted: false  # (Optional) Encrypt the volume. Default: false.
+        kms_key_id: ""  # (Optional) KMS key ID/ARN when encrypted = true.
+        delete_on_termination: true  # (Optional) Delete volume on instance termination. Default: true.
+        no_device: false  # (Optional) Suppress the specified device mapping. Default: false.
+        virtual_name: ""  # (Optional) For ephemeral devices (rarely used). Default: "".
+  spot:  # (Optional) Spot instance options on the Launch Template.
+    enabled: false  # (Optional) Enable Spot market. Default: false.
+    interruption_behavior: "terminate"  # (Optional) Action on interruption. Default: "terminate". Allowed values: "hibernate", "stop", "terminate".
+    instance_type: "one-time"  # (Optional) Spot request type. Default: null. Allowed values: "one-time", "persistent".
+    block_duration_minutes: 60  # (Optional) Fixed hourly block duration (multiples of 60). Default: null. Allowed values: 60, 120, 180, 240, 300, 360.
+  instance_requirements:  # (Optional) Flexible instance selection instead of a fixed asg.type (Launch Template).
+    instance_types: ["t3a.micro"]  # (Optional) Allowed instance type names (e.g., t3a.micro).
+    memory_mib:  # (Optional) Memory requirement in MiB.
+      min: 0  # (Optional) Minimum memory in MiB. Default: 0.
+      max: 4096  # (Optional) Maximum memory in MiB. Default: null.
+    vcpu_count:  # (Optional) vCPU requirement.
+      min: 0  # (Optional) Minimum vCPUs. Default: 0.
+      max: 2  # (Optional) Maximum vCPUs. Default: null.
+  metadata_options:  # (Optional) Instance Metadata Service (IMDS) options (Launch Template).
+    http_endpoint: "enabled"  # (Optional) Control IMDS endpoint availability. Default: "enabled". Allowed values: "enabled", "disabled".
+    http_put_response_hop_limit: 1  # (Optional) Allowed network hops for PUT (1-64). Default: 1.
+    http_tokens: "optional"  # (Optional) Require IMDSv2 session tokens. Default: "optional". Allowed values: "required", "optional".
+    instance_metadata_tags: "disabled"  # (Optional) Include instance tags in IMDS. Default: "disabled". Allowed values: "enabled", "disabled".
+  key_pair:  # (Optional) Module-managed EC2 key pair.
+    create: false  # (Optional) Create and attach a key pair. Default: false.
+    name: ""  # (Optional) Key pair name when create = true. Default: "key/${local.name}".
+  secrets_manager_enabled: true  # (Optional) When key_pair.create = true, save keys to Secrets Manager. Default: true.
+  vpc:  # (Required) Networking configuration for the ASG.
+    subnet_ids: ["subnet-12345"]  # (Required) Subnet IDs where instances will be launched.
+    security_group_ids: ["sg-12345"]  # (Optional) Additional SGs to attach.
+    availability_zones: ["us-east-1a"]  # (Optional) Explicit AZs for the ASG. Default: provider computes from subnets.
+  security_group:  # (Optional) Module-managed Security Group and its rules.
+    create: false  # (Optional) Create a security group. Default: false.
+    rules:  # (Optional) Map of ingress/egress rules (key = rule id).
+      ssh-ingress:  # (Optional) Example rule key.
+        description: "Allow SSH"  # (Optional) Description. Default: "Rule for ${local.name} access".
+        type: "ingress"  # (Optional) Rule direction. Default: "ingress". Allowed values: "ingress", "egress".
+        protocol: "tcp"  # (Optional) Protocol. Default: "-1". Allowed values: "tcp", "udp", "icmp", "-1", etc.
+        from_port: 22  # (Optional) From port (or ICMP type). Default: 0.
+        to_port: 22  # (Optional) To port (or ICMP code). Default: 0.
+        cidr_blocks: ["0.0.0.0/0"]  # (Optional) IPv4 CIDR ranges.
+        ipv6_cidr_blocks: []  # (Optional) IPv6 CIDR ranges.
+        self: false  # (Optional) If true, the SG itself is a source/destination.
+        source_security_group_id: ""  # (Optional) Source SG for ingress.
+  min_size: 1  # (Optional) Minimum number of instances in the ASG. Default: 1.
+  max_size: 2  # (Optional) Maximum number of instances in the ASG. Default: 1.
+  desired_capacity: 1  # (Optional) Desired capacity. Default: 1.
+  desired: 1  # (Optional) Alias for desired_capacity. Default: 1.
+  enabled_metrics: ["GroupMinSize"]  # (Optional) List of ASG metrics to collect. Default: [].
+  termination_policies: ["Default"]  # (Optional) Termination policies. Default: ["Default"]. Allowed values: "OldestInstance", "OldestLaunchTemplate", "ClosestToNextInstanceHour", "Default".
+  suspended_processes: ["HealthCheck"]  # (Optional) Processes to suspend. Default: []. Allowed values: "HealthCheck", "AZRebalance", "ReplaceUnhealthy", "AlarmNotification", "ScheduledActions", "AddToLoadBalancer".
+  health_check:  # (Optional) Health check configuration for the ASG.
+    type: "ELB"  # (Optional) Health check type. Default: "ELB". Allowed values: "EC2", "ELB".
+    grace_period: 300  # (Optional) Seconds to ignore unhealthy checks after launch. Default: 300.
+  force_delete: false  # (Optional) Force delete the ASG and all instances. Default: false.
+  availability_zone_distribution: "balanced"  # (Optional) Capacity distribution strategy across AZs. Default: null. Allowed values: "balanced", "prioritized".
+  mixed_instances: false  # (Optional) Use Mixed Instances Policy with overrides. Default: false.
+  instance_types:  # (Optional) Overrides; required when mixed_instances = true.
+    - type: "t3.micro"  # (Required) Instance type for this override.
+      capacity: "1"  # (Optional) Weighted capacity as string. Default: "1".
+  instance_refresh:  # (Optional) Rolling instance refresh strategy.
+    enabled: false  # (Optional) Enable instance refresh. Default: false.
+    strategy: "Rolling"  # (Optional) Refresh strategy. Default: "Rolling". Allowed values: "Rolling".
+    min_healthy_percentage: 90  # (Optional) Minimum healthy percentage during refresh. Default: 90.
+    max_healthy_percentage: 100  # (Optional) Maximum healthy percentage during refresh. Default: null.
+    instance_warmup: 300  # (Optional) Warm-up time in seconds. Default: null.
+    triggers: ["launch_template"]  # (Optional) Events that trigger refresh. Default: [].
+  extra_tags:  # (Optional) Extra tags applied to instances.
+    Owner: "you@example.com"
+  backup:  # (Optional) Backup tagging for AWS Backup plan discovery.
+    enabled: false  # (Optional) Add backup discovery tags. Default: false.
+    only_tag: true  # (Optional) Apply only tags (no backup resources). Default: true.
+    schedule: "daily"  # (Optional) Tag to indicate backup schedule. Default: "daily". Allowed values: "hourly", "daily", "weekly", "monthly".
+  scaling_policies:  # (Optional) List of Auto Scaling policies to attach to the ASG.
+    - name: "cpu-target"  # (Required) Unique policy name key.
+      adjustment_type: "ChangeInCapacity"  # (Optional) For simple/step scaling. Default: "ChangeInCapacity". Allowed values: "ChangeInCapacity", "ExactCapacity", "PercentChangeInCapacity".
+      scaling_adjustment: 1  # (Optional) Change amount for simple/step scaling.
+      cooldown: 300  # (Optional) Cooldown in seconds. Default: 300.
+      tracking_configuration:  # (Optional) Target tracking configuration.
+        target_value: 50.0  # (Required) Target value for the metric.
+        predefined:  # (Optional) Use a predefined ASG metric.
+          metric_type: "ASGAverageCPUUtilization"  # (Required) Metric type. Allowed values: "ASGAverageCPUUtilization", "ASGAverageNetworkIn", "ASGAverageNetworkOut", "ALBRequestCountPerTarget".
+          resource_label: "app/my-alb/50dc6c495c0c"  # (Optional) Required only for ALB metrics.
+        customized:  # (Optional) Use CloudWatch metric math/metrics.
+          metrics:  # (Optional) List of metric data queries.
+            - label: "MyMetric"  # (Optional) Label for the time series.
+              id: "m1"  # (Required) Unique within the policy.
+              expression: "m2 / m3"  # (Optional) Metric math expression.
+              return_data: true  # (Optional) Whether to return this time series. Default: true.
+              metric_stat:  # (Optional) Required when not using expression.
+                metric:
+                  namespace: "AWS/EC2"  # (Required) Metric namespace.
+                  metric_name: "CPUUtilization"  # (Required) Metric name.
+                  dimensions:  # (Optional) Metric dimensions.
+                    - name: "AutoScalingGroupName"  # (Required) Dimension name.
+                      value: "my-asg"  # (Required) Dimension value.
+                stat: "Average"  # (Required) Statistic.
+                period: 60  # (Required) Period in seconds.
+                unit: "Percent"  # (Optional) Unit for the metric.
+      predictive_scaling:  # (Optional) Predictive scaling configuration.
+        target_value: 50.0  # (Required) Target capacity utilization.
+        metric_pair:  # (Optional) Predefined pair metric for load vs. capacity.
+          metric_type: "ALBRequestCountPerTarget"  # (Required) Predefined pair type.
+          resource_label: "app/my-alb/50dc6c495c0c"  # (Required for ALB metrics) Resource label.
+        customized_load:  # (Optional) Customized load metric.
+          id: "load1"  # (Required) Unique identifier.
+          label: "Load"  # (Optional) Label for the metric.
+          expression: ""  # (Optional) Math expression.
+          return_data: true  # (Optional) Default: true.
+          metric_stat:  # (Optional) Metric statistics.
+            metric:
+              namespace: "AWS/EC2"
+              metric_name: "CPUUtilization"
+              dimensions:
+                - name: "AutoScalingGroupName"
+                  value: "my-asg"
+            stat: "Average"
+            unit: "Percent"
+        customized_capacity:  # (Optional) Customized capacity metric.
+          id: "cap1"  # (Required) Unique identifier.
+          label: "Capacity"  # (Optional) Label for the metric.
+          expression: ""  # (Optional) Math expression.
+          return_data: true  # (Optional) Default: true.
+          metric_stat:
+            metric:
+              namespace: "AWS/EC2"
+              metric_name: "CPUUtilization"
+              dimensions:
+                - name: "AutoScalingGroupName"
+                  value: "my-asg"
+            stat: "Average"
+            unit: "Percent"
+        customized_scaling:  # (Optional) Customized scaling metric.
+          data_queries:  # (Optional) List of metric data queries.
+            - id: "scale1"  # (Required) Unique identifier.
+              label: "Scaling"  # (Optional) Label for the metric.
+              expression: ""  # (Optional) Math expression.
+              return_data: true  # (Optional) Default: true.
+              metric_stat:
+                metric:
+                  namespace: "AWS/EC2"
+                  metric_name: "CPUUtilization"
+                  dimensions:
+                    - name: "AutoScalingGroupName"
+                      value: "my-asg"
+                stat: "Average"
+                unit: "Percent"
+timeouts:  # (Optional) Operation timeouts for the Auto Scaling Group resource.
+  update: "20m"  # (Optional) Timeout for create/update operations. Default: "20m".
+  delete: "20m"  # (Optional) Timeout for delete operations. Default: "20m".
+iam:  # (Optional) IAM resources configuration for EC2 instances (role and instance profile).
+  create: true  # (Optional) Create IAM role and instance profile and attach to instances. Default: true.
+  path: "/service-role/"  # (Optional) Path for the IAM role and instance profile. Default: null.
+  role_description: "Role for ${name}"  # (Optional) Description for the IAM role. Default: "IAM Instance Role ${local.name}".
+  permissions_boundary: "arn:aws:iam::...:policy/..."  # (Optional) ARN of the permissions boundary policy. Default: null.
+  logs_enabled: false  # (Optional) Enable CloudWatch Logs delivery policy. Default: false.
+  role_policies:  # (Optional) Map of managed policy attachments (key = logical name, value = policy ARN). Default: {}.
+    CWAgent: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  extra_tags:  # (Optional) Extra tags to apply to IAM resources. Default: {}.
+    Team: "Platform"
 
 ## Quick Start
 
-Prerequisites
-- AWS credentials configured (env vars or profile)
-- Terraform and Terragrunt installed
-
-Steps
-1. Create a live repo folder, e.g., `live/prod/us-east-1/asg/terragrunt.hcl`.
-2. Paste one of the example `terragrunt.hcl` snippets above and adjust `org`, subnets, and AMI.
-3. Run:
-   - `terragrunt init`
-   - `terragrunt plan`
-   - `terragrunt apply`
-4. To change instance types or roll out new AMIs safely, enable `asg.instance_refresh`.
-5. To add scaling, configure `asg.scaling_policies`.
+1. Ensure you have AWS credentials configured.
+2. Install Terraform and Terragrunt.
+3. Create a `terragrunt.hcl` file with the module source and your configuration.
+4. Run `terragrunt plan` to review the changes.
+5. Run `terragrunt apply` to deploy the Auto Scaling Group.
 
 
 ## Examples
 
-Minimal Terragrunt example
+### Minimal Example
 
 ```hcl
 terraform {
@@ -318,9 +369,7 @@ inputs = {
     environment_type  = "dev"
     environment_name  = "sandbox"
   }
-
-  name = "sandbox-web"
-
+  name = "sandbox-api"
   asg = {
     type = "t3.micro"
     ami = {
@@ -328,12 +377,12 @@ inputs = {
       name        = "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"
       most_recent = true
     }
-    vpc = { subnet_ids = ["subnet-aaa", "subnet-bbb"] }
+    vpc = { subnet_ids = ["subnet-12345678"] }
   }
 }
 ```
 
-Advanced Terragrunt example (mixed instances, instance refresh, scaling)
+### Advanced Example (Spot, Refresh, Scaling)
 
 ```hcl
 terraform {
@@ -347,52 +396,27 @@ inputs = {
     environment_type  = "prod"
     environment_name  = "payments"
   }
-
-  name_prefix = "plat-payments"
-  extra_tags  = { Owner = "platform@acme.io" }
-
+  name = "payments-worker"
   asg = {
-    ami = {
-      id = "ami-0123456789abcdef0"
-    }
+    ami = { id = "ami-0123456789abcdef0" }
+    spot = { enabled = true, interruption_behavior = "terminate" }
     mixed_instances = true
-    instance_types  = [
-      { type = "t3a.micro", capacity = "1" },
-      { type = "t3.micro",  capacity = "1" }
-    ]
-    vpc = {
-      subnet_ids = ["subnet-aaa", "subnet-bbb", "subnet-ccc"]
-    }
-    security_group = {
-      create = true
-      rules = {
-        ssh = { description = "SSH", type = "ingress", protocol = "tcp", from_port = 22, to_port = 22, cidr_blocks = ["10.0.0.0/8"] }
-      }
-    }
+    instance_types  = [{ type = "t3.micro", capacity = "1" }, { type = "t3a.micro", capacity = "1" }]
+    vpc = { subnet_ids = ["subnet-12345678", "subnet-87654321"] }
     instance_refresh = {
       enabled = true
       strategy = "Rolling"
-      min_healthy_percentage = 90
+      min_healthy_percentage = 50
     }
     scaling_policies = [
       {
         name = "cpu-target"
         tracking_configuration = {
-          target_value = 50.0
+          target_value = 70.0
           predefined   = { metric_type = "ASGAverageCPUUtilization" }
         }
       }
     ]
-    key_pair = { create = true, name = "key/payments-web" }
-    secrets_manager_enabled = true
-    backup = { enabled = true, only_tag = true, schedule = "daily" }
-  }
-
-  iam = {
-    create = true
-    role_policies = {
-      CWAgent = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-    }
   }
 }
 ```
@@ -445,6 +469,8 @@ Available targets:
 | [aws_iam_role.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy.logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.udpate_asg_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy_attachment.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
@@ -466,6 +492,7 @@ Available targets:
 | [aws_iam_policy_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg_auto_trust](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.update_asg_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg_trust](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
 | [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
@@ -532,7 +559,7 @@ Please use the [issue tracker](https://github.com/cloudopsworks/terraform-module
 
 ## Copyrights
 
-Copyright © 2024-2025 [Cloud Ops Works LLC](https://cloudops.works)
+Copyright © 2024-2026 [Cloud Ops Works LLC](https://cloudops.works)
 
 
 
