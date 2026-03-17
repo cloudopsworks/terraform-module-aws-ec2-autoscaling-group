@@ -49,7 +49,7 @@ resource "aws_launch_template" "this" {
   key_name               = try(var.asg.key_pair.create, false) ? aws_key_pair.this[0].key_name : null
   update_default_version = true
   ebs_optimized          = try(var.asg.ebs.ebs_optimized, null)
-  user_data              = try(var.asg.user_data, "") != "" ? base64encode(var.asg.user_data) : try(var.asg.user_data_base64, null)
+  user_data              = try(var.asg.user_data, "") != "" ? base64encode(var.asg.user_data) : try(var.asg.user_data_base64, filebase64(var.asg.user_data_file), null)
 
   dynamic "block_device_mappings" {
     for_each = try(var.asg.ebs.block_device, [])
