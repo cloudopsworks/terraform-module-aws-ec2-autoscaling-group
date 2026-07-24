@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -113,7 +113,7 @@ data "aws_iam_policy_document" "cloudwatch_agent_parameter" {
       "ssm:GetParameter"
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:parameter/${trimprefix(local.cloudwatch_agent_config_parameter_name, "/")}"
+      "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${trimprefix(local.cloudwatch_agent_config_parameter_name, "/")}"
     ]
   }
 }
@@ -141,7 +141,7 @@ resource "aws_iam_role_policy" "logs" {
           "logs:PutLogEventsBatch",
           "logs:DescribeLogStreams"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:*"
+        Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
       }
     ]
   })

@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -227,7 +227,7 @@ data "aws_iam_policy_document" "update_asg" {
       "ssm:SendCommand",
     ]
     resources = [
-      "arn:aws:ec2:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:instance/*"
+      "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:instance/*"
     ]
   }
 
@@ -239,7 +239,7 @@ data "aws_iam_policy_document" "update_asg" {
     ]
     resources = [
       aws_ssm_document.update_asg[0].arn,
-      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:document/${aws_ssm_document.update_asg[0].name}"
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:document/${aws_ssm_document.update_asg[0].name}"
     ]
   }
 
@@ -249,8 +249,8 @@ data "aws_iam_policy_document" "update_asg" {
       "ssm:StartAutomationExecution",
     ]
     resources = [
-      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:automation-execution/*",
-      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:automation-definition/*",
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:automation-execution/*",
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:automation-definition/*",
     ]
   }
 
@@ -385,7 +385,7 @@ data "aws_iam_policy_document" "update_asg_auto" {
       "logs:DescribeLogGroups",
     ]
     resources = [
-      "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:*"
+      "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
     ]
   }
 
