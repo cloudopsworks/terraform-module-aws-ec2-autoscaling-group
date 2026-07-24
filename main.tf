@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -14,6 +14,7 @@ locals {
     local.all_tags,
     local.backup_tags,
     try(var.asg.extra_tags, {}),
+    local.cloudwatch_agent_tags,
     {
       Name = local.name
     }
@@ -182,7 +183,7 @@ resource "aws_autoscaling_group" "this" {
   }
 
   dynamic "tag" {
-    for_each = local.all_tags
+    for_each = merge(local.all_tags, local.cloudwatch_agent_tags)
     content {
       key                 = tag.key
       value               = tag.value
@@ -193,6 +194,10 @@ resource "aws_autoscaling_group" "this" {
     update = try(var.timeouts.update, "20m")
     delete = try(var.timeouts.delete, "20m")
   }
+  depends_on = [
+    aws_iam_role_policy_attachment.this,
+    aws_iam_role_policy.cloudwatch_agent_parameter
+  ]
 }
 
 resource "aws_autoscaling_policy" "this" {

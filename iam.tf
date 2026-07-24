@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -10,7 +10,26 @@ data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 
 locals {
-  iam_role_name = "${local.name}-asg-role"
+  iam_role_name              = "${local.name}-asg-role"
+  iam_role_policy_input      = try(var.iam.role_policies, null)
+  iam_role_policy_normalized = local.iam_role_policy_input == null ? {} : local.iam_role_policy_input
+  iam_role_policies = can(tomap(local.iam_role_policy_normalized)) ? tomap(local.iam_role_policy_normalized) : {
+    for index, policy_arn in local.iam_role_policy_normalized : tostring(index) => policy_arn
+  }
+  iam_role_policy_names = keys(local.iam_role_policies)
+  iam_role_policy_arns  = values(local.iam_role_policies)
+  cloudwatch_agent_policies = {
+    CloudWatchAgentServerPolicy  = "arn:${data.aws_partition.current.partition}:iam::aws:policy/CloudWatchAgentServerPolicy"
+    AmazonSSMManagedInstanceCore = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  }
+  cloudwatch_agent_role_policies = {
+    for name, arn in local.cloudwatch_agent_policies : name => arn
+    if(
+      (name == "CloudWatchAgentServerPolicy" && local.cloudwatch_agent_enabled) ||
+      (name == "AmazonSSMManagedInstanceCore" && (local.cloudwatch_agent_install_enabled || local.cloudwatch_agent_configure_enabled))
+    ) && !contains(local.iam_role_policy_names, name) && !contains(local.iam_role_policy_arns, arn)
+  }
+  effective_iam_role_policies = merge(local.iam_role_policies, local.cloudwatch_agent_role_policies)
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -78,10 +97,33 @@ resource "aws_iam_role_policy" "policy" {
 
 resource "aws_iam_role_policy_attachment" "this" {
   for_each = {
-    for k, v in try(var.iam.role_policies, {}) : k => v if try(var.asg.create, true) && try(var.iam.create, true)
+    for k, v in local.effective_iam_role_policies : k => v if try(var.asg.create, true) && try(var.iam.create, true)
   }
   policy_arn = each.value
   role       = aws_iam_role.this[0].name
+}
+
+data "aws_iam_policy_document" "cloudwatch_agent_parameter" {
+  count = try(var.asg.create, true) && try(var.iam.create, true) && local.cloudwatch_agent_configure_enabled ? 1 : 0
+
+  statement {
+    sid    = "AllowCloudWatchAgentConfigParameterRead"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter"
+    ]
+    resources = [
+      "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${trimprefix(local.cloudwatch_agent_config_parameter_name, "/")}"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "cloudwatch_agent_parameter" {
+  count = try(var.asg.create, true) && try(var.iam.create, true) && local.cloudwatch_agent_configure_enabled ? 1 : 0
+
+  role   = aws_iam_role.this[0].name
+  name   = "CloudWatchAgentParameterReadPolicy"
+  policy = data.aws_iam_policy_document.cloudwatch_agent_parameter[count.index].json
 }
 
 resource "aws_iam_role_policy" "logs" {
@@ -99,7 +141,7 @@ resource "aws_iam_role_policy" "logs" {
           "logs:PutLogEventsBatch",
           "logs:DescribeLogStreams"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:*"
+        Resource = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
       }
     ]
   })
@@ -117,5 +159,3 @@ resource "aws_iam_instance_profile" "this" {
     create_before_destroy = true
   }
 }
-
-

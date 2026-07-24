@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -43,6 +43,30 @@ variable "name_prefix" {
 #     echo "hello"
 #   user_data_base64: ""  # (Optional) Base64-encoded user data. Used only when user_data is empty. Default: "".
 #   monitoring: false  # (Optional) Detailed monitoring for instances (Launch Template). Default: false.
+#   cloudwatch_agent:  # (Optional) CloudWatch Agent installation, configuration, and workload-detection targeting.
+#     enabled: false  # (Optional) Enable CloudWatch Agent integration. Default: false.
+#     install: true  # (Optional) Create an SSM State Manager association using AWS-ConfigureAWSPackage to install AmazonCloudWatchAgent. Default: true.
+#     configure: true  # (Optional) Create an SSM State Manager association using AmazonCloudWatch-ManageAgent to configure and start the agent. Default: true.
+#     create_config_parameter: true  # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+#     config_parameter_name: "AmazonCloudWatch-my-asg-config"  # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-${local.name}-config".
+#     append_default_configuration: true  # (Optional) Shallow-merge configuration with the default memory/disk metric collection profile. Default: true.
+#     namespace: "CWAgent"  # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
+#     metrics_collection_interval: 60  # (Optional) Metrics collection interval in seconds for the default configuration. Default: 60.
+#     run_as_user: "root"  # (Optional) Operating system user used by the CloudWatch Agent default configuration. Default: "root".
+#     configuration: {}  # (Optional) Custom CloudWatch Agent JSON configuration as a YAML object. Default: {}.
+#     package_name: "AmazonCloudWatchAgent"  # (Optional) Package name passed to AWS-ConfigureAWSPackage. Default: "AmazonCloudWatchAgent".
+#     package_version: "latest"  # (Optional) Package version passed to AWS-ConfigureAWSPackage. Default: "latest".
+#     installation_type: "Uninstall and reinstall"  # (Optional) Installation type for package updates. Default: "Uninstall and reinstall". Valid option for updates: "Uninstall and reinstall".
+#     mode: "ec2"  # (Optional) AmazonCloudWatch-ManageAgent mode. Default: "ec2". Valid options include: "ec2", "onPremise", "auto".
+#     restart: "yes"  # (Optional) Restart/start the agent after configuration. Default: "yes". Valid options: "yes", "no".
+#     schedule_expression: null  # (Optional) State Manager schedule expression, for example "rate(1 day)". Default: null.
+#     max_concurrency: "10%"  # (Optional) Maximum concurrent association executions. Default: AWS default.
+#     max_errors: "1"  # (Optional) Maximum failed association executions. Default: AWS default.
+#     wait_for_success_timeout_seconds: null  # (Optional) Seconds Terraform waits for association success. Default: provider default.
+#     workload_detection:  # (Optional) Instance tag used by CloudWatch console tag-based workload detection/deployment.
+#       enabled: false  # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
+#       tag_key: "CloudWatchAgent"  # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
+#       tag_value: "enabled"  # (Optional) EC2 instance tag value used for SSM targeting and CloudWatch console tag-based deployment. Default: "enabled".
 #   ebs:  # (Optional) EBS and block device settings for the Launch Template.
 #     ebs_optimized: true  # (Optional) Enable EBS optimization. Default: AWS/AMI default.
 #     block_device:  # (Optional) List of block device mappings.
@@ -221,8 +245,8 @@ variable "timeouts" {
 #   role_description: "Role for ${name}"  # (Optional) Description for the IAM role. Default: "IAM Instance Role ${local.name}".
 #   permissions_boundary: "arn:aws:iam::...:policy/..."  # (Optional) ARN of the permissions boundary policy. Default: null.
 #   logs_enabled: false  # (Optional) Enable CloudWatch Logs delivery policy. Default: false.
-#   role_policies:  # (Optional) Array of managed policy attachments. Default: [].
-#     - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+#   role_policies:  # (Optional) Map or list of managed policy ARN attachments. CloudWatch Agent policies are attached automatically when iam.create = true and asg.cloudwatch_agent.enabled = true. Default: {}.
+#     CloudWatchAgentServerPolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 #   extra_tags:  # (Optional) Extra tags to apply to IAM resources. Default: {}.
 #     Team: "Platform"
 variable "iam" {

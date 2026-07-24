@@ -24,6 +24,7 @@ It supports:
 - Target tracking and predictive scaling policies.
 - Rolling Instance Refresh.
 - Backup discovery tagging.
+- Optional CloudWatch Agent installation/configuration through Systems Manager, with tags for CloudWatch workload detection and tag-based deployment.
 - Detailed configuration through a single `asg` input object.
 
 
@@ -59,7 +60,9 @@ wraps common building blocks (Launch Template, ASG, SG, IAM, Key Pair, Secrets
 Manager) and exposes a single structured input `asg` that covers image selection,
 user data, storage, Spot, IMDS settings, networking, scaling, and instance
 refresh. Additional inputs allow you to integrate the module with your
-organization conventions and tagging strategy.
+organization conventions and tagging strategy. When enabled, the module can
+install and configure the CloudWatch Agent through AWS Systems Manager State
+Manager and tag launched instances for CloudWatch workload detection workflows.
 
 ## Usage
 
@@ -68,72 +71,124 @@ organization conventions and tagging strategy.
 Instead pin to the release tag (e.g. `?ref=vX.Y.Z`) of one of our [latest releases](https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group/releases).
 
 
-### Terragrunt Usage (Recommended)
+### Terragrunt Scaffolding Workflow (Recommended)
 
-To use this module with Terragrunt, create a `terragrunt.hcl` in your live environment
-and provide the inputs as shown below. The module expects a structured `asg` object
-for most configurations.
+Scaffold a deployment directory, edit the generated `inputs.yaml`, then apply
+with Terragrunt. Scaffold writes into the current directory, so create and enter
+the target directory first.
+
+```sh
+# 1. Create and enter the target deployment directory
+mkdir -p prod/us-east-1/app/payments-asg
+cd prod/us-east-1/app/payments-asg
+
+# 2. Scaffold the module (do NOT use --working-dir)
+terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group
+
+# 3. Edit inputs.yaml with deployment-specific values
+vi inputs.yaml
+
+# 4. Apply
+terragrunt apply
+```
+
+Example generated `inputs.yaml` content for CloudWatch Agent installation and
+workload-detection targeting:
+
+```yaml
+name: "payments-api" # (Optional) The name of the EC2 Instance/ASG. Default: "".
+name_prefix: "" # (Optional) The name prefix of the EC2 Instance/ASG. Default: "".
+
+asg: # (Optional) Auto Scaling Group and Launch Template configuration. Created when asg.create = true (default).
+  create: true # (Optional) Whether to create ASG resources. Default: true.
+  type: "t3.micro" # (Optional) Instance type for the Launch Template.
+  ami: # (Required) AMI selection. One of ami.id or ami.name must be provided.
+    id: null # (Optional) AMI ID. If set, takes precedence over ami.name.
+    name: "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" # (Optional) AMI name/pattern.
+    owners: ["099720109477"] # (Optional) AMI owners to search.
+    most_recent: true # (Optional) Select most recent AMI. Default: true.
+  vpc: # (Required) Networking configuration for the ASG.
+    subnet_ids: ["subnet-12345678", "subnet-87654321"] # (Required) Subnet IDs where instances will be launched.
+  min_size: 2 # (Optional) Minimum number of instances in the ASG. Default: 1.
+  max_size: 5 # (Optional) Maximum number of instances in the ASG. Default: 1.
+  desired_capacity: 2 # (Optional) Desired capacity. Default: 1.
+  monitoring: true # (Optional) Detailed monitoring for instances. Default: false.
+  cloudwatch_agent: # (Optional) CloudWatch Agent installation, configuration, and workload-detection targeting.
+    enabled: true # (Optional) Enable CloudWatch Agent integration. Default: false.
+    install: true # (Optional) Install AmazonCloudWatchAgent through AWS-ConfigureAWSPackage. Default: true.
+    configure: true # (Optional) Configure and start the agent through AmazonCloudWatch-ManageAgent. Default: true.
+    create_config_parameter: true # (Optional) Create SSM Parameter Store value for the agent JSON configuration. Default: true.
+    config_parameter_name: "AmazonCloudWatch-payments-api-config" # (Optional) SSM parameter name. Default: "AmazonCloudWatch-${local.name}-config".
+    append_default_configuration: true # (Optional) Shallow-merge custom configuration with default memory/disk metrics. Default: true.
+    namespace: "CWAgent" # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
+    metrics_collection_interval: 60 # (Optional) Metrics collection interval in seconds. Default: 60.
+    run_as_user: "root" # (Optional) User used by the agent default configuration. Default: "root".
+    configuration: {} # (Optional) Custom CloudWatch Agent JSON configuration as YAML object. Default: {}.
+    package_name: "AmazonCloudWatchAgent" # (Optional) Package name. Default: "AmazonCloudWatchAgent".
+    package_version: "latest" # (Optional) Package version. Default: "latest".
+    installation_type: "Uninstall and reinstall" # (Optional) Package update mode. Default: "Uninstall and reinstall".
+    mode: "ec2" # (Optional) AmazonCloudWatch-ManageAgent mode. Default: "ec2".
+    restart: "yes" # (Optional) Restart/start the agent after configuration. Default: "yes".
+    max_concurrency: "10%" # (Optional) Maximum concurrent association executions. Default: AWS default.
+    max_errors: "1" # (Optional) Maximum failed association executions. Default: AWS default.
+    workload_detection: # (Optional) Tag used by CloudWatch console workload detection and tag-based deployment.
+      enabled: true # (Optional) Add the workload-detection target tag. Default: false.
+      tag_key: "CloudWatchAgent" # (Optional) EC2 instance tag key used for targeting. Default: "CloudWatchAgent".
+      tag_value: "enabled" # (Optional) EC2 instance tag value used for targeting. Default: "enabled".
+
+timeouts: # (Optional) Operation timeouts for the Auto Scaling Group resource.
+  update: "20m" # (Optional) Timeout for create/update operations. Default: "20m".
+  delete: "20m" # (Optional) Timeout for delete operations. Default: "20m".
+
+iam: # (Optional) IAM resources configuration for EC2 instances.
+  create: true # (Optional) Create IAM role and instance profile. Default: true.
+  role_policies: {} # (Optional) Additional managed policy ARN attachments. CloudWatch Agent and SSM policies are automatic when iam.create = true.
+```
+
+Example rendered `terragrunt.hcl` from scaffold (abridged to the module-specific wiring):
 
 ```hcl
+locals {
+  local_vars  = yamldecode(file("./inputs.yaml"))
+  spoke_vars  = yamldecode(file(find_in_parent_folders("spoke-inputs.yaml")))
+  region_vars = yamldecode(file(find_in_parent_folders("region-inputs.yaml")))
+  env_vars    = yamldecode(file(find_in_parent_folders("env-inputs.yaml")))
+  global_vars = yamldecode(file(find_in_parent_folders("global-inputs.yaml")))
+
+  local_tags  = jsondecode(file("./local-tags.json"))
+  spoke_tags  = jsondecode(file(find_in_parent_folders("spoke-tags.json")))
+  region_tags = jsondecode(file(find_in_parent_folders("region-tags.json")))
+  env_tags    = jsondecode(file(find_in_parent_folders("env-tags.json")))
+  global_tags = jsondecode(file(find_in_parent_folders("global-tags.json")))
+
+  tags = merge(local.global_tags, local.env_tags, local.region_tags, local.spoke_tags, local.local_tags)
+}
+
+include "root" {
+  path = find_in_parent_folders("root.hcl")
+}
+
 terraform {
-  source = "git::https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group.git//?ref=vX.Y.Z"
+  source = "github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group"
 }
 
 inputs = {
-  # is_hub: false # (Optional) Is this a hub or spoke configuration? Default: false.
-  is_hub = false
+  org       = local.env_vars.org
+  is_hub    = false
+  spoke_def = local.spoke_vars.spoke_def
 
-  # spoke_def: "001" # (Optional) Spoke ID Number, must be a 3 digit number. Default: "001".
-  spoke_def = "001"
-
-  # org: # (Required) Organization details used for naming and tagging.
-  org = {
-    organization_name = "acme"             # (Required) Organization name
-    organization_unit = "platform"         # (Required) Business unit or OU
-    environment_type  = "prod"             # (Required) Env type (dev|stage|prod)
-    environment_name  = "payments"         # (Required) Environment name
-  }
-
-  # extra_tags: {} # (Optional) Extra tags to add to all resources. Default: {}.
-  extra_tags = {
-    Owner = "platform-team@acme.com"
-  }
-
-  # name: "my-asg" # (Optional) The name of the EC2 Instance/ASG. Default: "".
-  name = "payments-api"
-
-  # asg: # (Optional) Auto Scaling Group and Launch Template configuration.
-  asg = {
-    create = true                            # (Optional) Default: true
-    type   = "t3.micro"                      # (Conditionally required) Fixed instance type
-
-    ami = {                                  # (Required) AMI selection logic
-      id           = null                    # (Optional) Specific AMI ID
-      name         = "ubuntu/images/*"      # (Optional) AMI name pattern
-      owners       = ["099720109477"]        # (Optional) AMI owners (e.g., Canonical)
-      most_recent  = true                    # (Optional) Default: true
-    }
-
-    vpc = {                                  # (Required) Networking configuration
-      subnet_ids = ["subnet-12345678", "subnet-87654321"] # (Required)
-    }
-
-    min_size         = 2                     # (Optional) Default: 1
-    max_size         = 5                     # (Optional) Default: 1
-    desired_capacity = 2                     # (Optional) Default: 1
-
-    monitoring = true                        # (Optional) Detailed monitoring. Default: false
-  }
-  
-  # iam: # (Optional) IAM configuration for instances.
-  iam = {
-    create = true                            # (Optional) Default: true
-    role_policies = {
-      CWAgent = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-    }
-  }
+  name        = try(local.local_vars.name, "")
+  name_prefix = try(local.local_vars.name_prefix, "")
+  asg         = try(local.local_vars.asg, {})
+  timeouts    = try(local.local_vars.timeouts, {})
+  iam         = try(local.local_vars.iam, {})
+  extra_tags  = local.tags
 }
 ```
+
+Note: AWS CloudWatch workload detection is an opt-in CloudWatch console setting.
+This module installs/configures the agent through SSM and applies the EC2 tags
+used by CloudWatch tag-based deployment for current and future matching instances.
 
 ### Full YAML Configuration Reference
 
@@ -170,6 +225,30 @@ asg:  # (Optional) Auto Scaling Group and Launch Template configuration. Created
     echo "hello"
   user_data_base64: ""  # (Optional) Base64-encoded user data. Used only when user_data is empty. Default: "".
   monitoring: false  # (Optional) Detailed monitoring for instances (Launch Template). Default: false.
+  cloudwatch_agent:  # (Optional) CloudWatch Agent installation, configuration, and workload-detection targeting.
+    enabled: false  # (Optional) Enable CloudWatch Agent integration. Default: false.
+    install: true  # (Optional) Create an SSM State Manager association using AWS-ConfigureAWSPackage to install AmazonCloudWatchAgent. Default: true.
+    configure: true  # (Optional) Create an SSM State Manager association using AmazonCloudWatch-ManageAgent to configure and start the agent. Default: true.
+    create_config_parameter: true  # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+    config_parameter_name: "AmazonCloudWatch-my-asg-config"  # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-${local.name}-config".
+    append_default_configuration: true  # (Optional) Shallow-merge configuration with the default memory/disk metric collection profile. Default: true.
+    namespace: "CWAgent"  # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
+    metrics_collection_interval: 60  # (Optional) Metrics collection interval in seconds for the default configuration. Default: 60.
+    run_as_user: "root"  # (Optional) Operating system user used by the CloudWatch Agent default configuration. Default: "root".
+    configuration: {}  # (Optional) Custom CloudWatch Agent JSON configuration as a YAML object. Default: {}.
+    package_name: "AmazonCloudWatchAgent"  # (Optional) Package name passed to AWS-ConfigureAWSPackage. Default: "AmazonCloudWatchAgent".
+    package_version: "latest"  # (Optional) Package version passed to AWS-ConfigureAWSPackage. Default: "latest".
+    installation_type: "Uninstall and reinstall"  # (Optional) Installation type for package updates. Default: "Uninstall and reinstall". Valid option for updates: "Uninstall and reinstall".
+    mode: "ec2"  # (Optional) AmazonCloudWatch-ManageAgent mode. Default: "ec2". Valid options include: "ec2", "onPremise", "auto".
+    restart: "yes"  # (Optional) Restart/start the agent after configuration. Default: "yes". Valid options: "yes", "no".
+    schedule_expression: null  # (Optional) State Manager schedule expression, for example "rate(1 day)". Default: null.
+    max_concurrency: "10%"  # (Optional) Maximum concurrent association executions. Default: AWS default.
+    max_errors: "1"  # (Optional) Maximum failed association executions. Default: AWS default.
+    wait_for_success_timeout_seconds: null  # (Optional) Seconds Terraform waits for association success. Default: provider default.
+    workload_detection:  # (Optional) Instance tag used by CloudWatch console tag-based workload detection/deployment.
+      enabled: false  # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
+      tag_key: "CloudWatchAgent"  # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
+      tag_value: "enabled"  # (Optional) EC2 instance tag value used for SSM targeting and CloudWatch console tag-based deployment. Default: "enabled".
   ebs:  # (Optional) EBS and block device settings for the Launch Template.
     ebs_optimized: true  # (Optional) Enable EBS optimization. Default: AWS/AMI default.
     block_device:  # (Optional) List of block device mappings.
@@ -334,7 +413,7 @@ iam:  # (Optional) IAM resources configuration for EC2 instances (role and insta
   role_description: "Role for ${name}"  # (Optional) Description for the IAM role. Default: "IAM Instance Role ${local.name}".
   permissions_boundary: "arn:aws:iam::...:policy/..."  # (Optional) ARN of the permissions boundary policy. Default: null.
   logs_enabled: false  # (Optional) Enable CloudWatch Logs delivery policy. Default: false.
-  role_policies:  # (Optional) Map of managed policy attachments (key = logical name, value = policy ARN). Default: {}.
+  role_policies:  # (Optional) Map or list of managed policy ARN attachments. CloudWatch Agent policies are attached automatically when iam.create = true and asg.cloudwatch_agent.enabled = true. Default: {}.
     CWAgent: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
   extra_tags:  # (Optional) Extra tags to apply to IAM resources. Default: {}.
     Team: "Platform"
@@ -342,10 +421,12 @@ iam:  # (Optional) IAM resources configuration for EC2 instances (role and insta
 ## Quick Start
 
 1. Ensure you have AWS credentials configured.
-2. Install Terraform and Terragrunt.
-3. Create a `terragrunt.hcl` file with the module source and your configuration.
-4. Run `terragrunt plan` to review the changes.
-5. Run `terragrunt apply` to deploy the Auto Scaling Group.
+2. Install OpenTofu/Terraform and Terragrunt.
+3. Create and enter a deployment directory.
+4. Run `terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group`.
+5. Edit the generated `inputs.yaml`.
+6. Run `terragrunt plan` to review the changes.
+7. Run `terragrunt apply` to deploy the Auto Scaling Group.
 
 
 ## Examples
@@ -373,6 +454,50 @@ inputs = {
       most_recent = true
     }
     vpc = { subnet_ids = ["subnet-12345678"] }
+  }
+}
+```
+
+### CloudWatch Agent and Workload Detection Example
+
+```hcl
+terraform {
+  source = "git::https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group.git//?ref=vX.Y.Z"
+}
+
+inputs = {
+  org = {
+    organization_name = "acme"
+    organization_unit = "platform"
+    environment_type  = "prod"
+    environment_name  = "observability"
+  }
+  name = "observed-api"
+  asg = {
+    type = "t3.micro"
+    ami = {
+      owners      = ["099720109477"]
+      name        = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+      most_recent = true
+    }
+    vpc = { subnet_ids = ["subnet-12345678", "subnet-87654321"] }
+
+    cloudwatch_agent = {
+      enabled = true
+      workload_detection = {
+        enabled   = true
+        tag_key   = "CloudWatchAgent"
+        tag_value = "enabled"
+      }
+      configuration = {
+        metrics = {
+          namespace = "CWAgent"
+        }
+      }
+    }
+  }
+  iam = {
+    create = true # CloudWatchAgentServerPolicy and AmazonSSMManagedInstanceCore are attached automatically.
   }
 }
 ```
@@ -435,13 +560,13 @@ Available targets:
 | Name | Version |
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.3 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 6.4 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 6.35 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.4 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.35 |
 | <a name="provider_tls"></a> [tls](#provider\_tls) | n/a |
 
 ## Modules
@@ -462,6 +587,7 @@ Available targets:
 | [aws_iam_role.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
+| [aws_iam_role_policy.cloudwatch_agent_parameter](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.udpate_asg_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
@@ -477,12 +603,16 @@ Available targets:
 | [aws_secretsmanager_secret_version.instance_public_key](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret_version) | resource |
 | [aws_security_group.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
 | [aws_security_group_rule.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group_rule) | resource |
+| [aws_ssm_association.cloudwatch_agent_configure](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
+| [aws_ssm_association.cloudwatch_agent_install](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
 | [aws_ssm_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_document) | resource |
+| [aws_ssm_parameter.cloudwatch_agent_config](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_parameter) | resource |
 | [tls_private_key.this](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [aws_ami.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/ami) | data source |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_cloudwatch_event_bus.default](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/cloudwatch_event_bus) | data source |
 | [aws_iam_policy_document.assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.cloudwatch_agent_parameter](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
