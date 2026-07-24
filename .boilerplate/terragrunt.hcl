@@ -50,7 +50,7 @@ inputs = {
   org = local.env_vars.org
   {{- if .hub_spoke }}
   is_hub = {{ .is_hub }}
-  spoke_def = local.spoke_vars.spoke_def
+  spoke_def = local.spoke_vars.spoke
   {{- end}}
   ## Required
   {{- range .requiredVariables }}

@@ -175,7 +175,7 @@ terraform {
 inputs = {
   org       = local.env_vars.org
   is_hub    = false
-  spoke_def = local.spoke_vars.spoke_def
+  spoke_def = local.spoke_vars.spoke
 
   name        = try(local.local_vars.name, "")
   name_prefix = try(local.local_vars.name_prefix, "")
