@@ -175,7 +175,7 @@ terraform {
 inputs = {
   org       = local.env_vars.org
   is_hub    = false
-  spoke_def = local.spoke_vars.spoke_def
+  spoke_def = local.spoke_vars.spoke
 
   name        = try(local.local_vars.name, "")
   name_prefix = try(local.local_vars.name_prefix, "")
@@ -566,8 +566,8 @@ Available targets:
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.35 |
-| <a name="provider_tls"></a> [tls](#provider\_tls) | n/a |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.56.0 |
+| <a name="provider_tls"></a> [tls](#provider\_tls) | 4.3.0 |
 
 ## Modules
 
