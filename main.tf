@@ -19,6 +19,11 @@ locals {
       Name = local.name
     }
   )
+  instance_metadata_options                     = coalesce(try(var.asg.metadata_options, null), {})
+  instance_metadata_http_endpoint               = coalesce(try(local.instance_metadata_options.http_endpoint, null), "enabled")
+  instance_metadata_http_put_response_hop_limit = try(local.instance_metadata_options.http_put_response_hop_limit, null)
+  instance_metadata_http_tokens                 = "required"
+  instance_metadata_tags                        = coalesce(try(local.instance_metadata_options.instance_metadata_tags, null), "disabled")
 }
 
 data "aws_ami" "this" {
@@ -106,14 +111,11 @@ resource "aws_launch_template" "this" {
       enabled = true
     }
   }
-  dynamic "metadata_options" {
-    for_each = length(try(var.asg.metadata_options, {})) > 0 ? [var.asg.metadata_options] : []
-    content {
-      http_endpoint               = try(metadata_options.value.http_endpoint, null)
-      http_put_response_hop_limit = try(metadata_options.value.http_put_response_hop_limit, null)
-      http_tokens                 = try(metadata_options.value.http_tokens, null)
-      instance_metadata_tags      = try(metadata_options.value.instance_metadata_tags, null)
-    }
+  metadata_options {
+    http_endpoint               = local.instance_metadata_http_endpoint
+    http_put_response_hop_limit = local.instance_metadata_http_put_response_hop_limit
+    http_tokens                 = local.instance_metadata_http_tokens
+    instance_metadata_tags      = local.instance_metadata_tags
   }
   vpc_security_group_ids = try(var.asg.security_group.create, false) ? concat([aws_security_group.this[0].id], try(var.asg.vpc.security_group_ids, [])) : try(var.asg.vpc.security_group_ids, null)
   tag_specifications {
@@ -196,6 +198,7 @@ resource "aws_autoscaling_group" "this" {
   }
   depends_on = [
     aws_iam_role_policy_attachment.this,
+    aws_iam_role_policy_attachment.ssm_managed_instance_core,
     aws_iam_role_policy.cloudwatch_agent_parameter
   ]
 }

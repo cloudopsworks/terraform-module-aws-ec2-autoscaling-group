@@ -8,17 +8,17 @@
 #
 
 ##
-# name: "" # (Optional) The name of the EC2 Instance. Default: "".
+# name: "" # (Optional) The name of the EC2 Auto Scaling Group. Default: "".
 variable "name" {
-  description = "The name of the EC2 Instance"
+  description = "The name of the EC2 Auto Scaling Group"
   type        = string
   default     = ""
 }
 
 ##
-# name_prefix: "" # (Optional) The name prefix of the EC2 Instance. Default: "".
+# name_prefix: "" # (Optional) The name prefix of the EC2 Auto Scaling Group. Default: "".
 variable "name_prefix" {
-  description = "The name prefix of the EC2 Instance"
+  description = "The name prefix of the EC2 Auto Scaling Group"
   type        = string
   default     = ""
 }
@@ -59,6 +59,10 @@ variable "name_prefix" {
 #     installation_type: "Uninstall and reinstall"  # (Optional) Installation type for package updates. Default: "Uninstall and reinstall". Valid option for updates: "Uninstall and reinstall".
 #     mode: "ec2"  # (Optional) AmazonCloudWatch-ManageAgent mode. Default: "ec2". Valid options include: "ec2", "onPremise", "auto".
 #     restart: "yes"  # (Optional) Restart/start the agent after configuration. Default: "yes". Valid options: "yes", "no".
+#     attach_managed_policies: true  # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
+#     target:  # (Optional) SSM association target override. Defaults to the CloudWatch Agent tag for ASG lifecycle targeting.
+#       key: "tag:CloudWatchAgent"  # (Optional) SSM target key. Use "tag:<TagKey>" or "InstanceIds". Default: "tag:<workload_detection.tag_key>".
+#       values: ["enabled"]  # (Optional) SSM target values. Required when key is "InstanceIds"; otherwise defaults to [workload_detection.tag_value].
 #     schedule_expression: null  # (Optional) State Manager schedule expression, for example "rate(1 day)". Default: null.
 #     max_concurrency: "10%"  # (Optional) Maximum concurrent association executions. Default: AWS default.
 #     max_errors: "1"  # (Optional) Maximum failed association executions. Default: AWS default.
@@ -95,8 +99,8 @@ variable "name_prefix" {
 #       max: 2  # (Optional) Maximum vCPUs. Default: null.
 #   metadata_options:  # (Optional) Instance Metadata Service (IMDS) options (Launch Template).
 #     http_endpoint: "enabled"  # (Optional) Control IMDS endpoint availability. Default: "enabled". Allowed values: "enabled", "disabled".
-#     http_put_response_hop_limit: 1  # (Optional) Allowed network hops for PUT (1-64). Default: 1.
-#     http_tokens: "optional"  # (Optional) Require IMDSv2 session tokens. Default: "optional". Allowed values: "required", "optional".
+#     http_put_response_hop_limit: null  # (Optional) Allowed network hops for PUT (1-64). Default: null.
+#     http_tokens: "required"  # (Optional) Require IMDSv2 session tokens. Default: "required"; "optional" is rejected.
 #     instance_metadata_tags: "disabled"  # (Optional) Include instance tags in IMDS. Default: "disabled". Allowed values: "enabled", "disabled".
 #   key_pair:  # (Optional) Module-managed EC2 key pair.
 #     create: false  # (Optional) Create and attach a key pair. Default: false.
@@ -223,9 +227,67 @@ variable "name_prefix" {
 #                 stat: "Average"
 #                 unit: "Percent"
 variable "asg" {
-  description = "The instance type to use for the EC2 Instance"
+  description = "The Auto Scaling Group and Launch Template configuration"
   type        = any
   default     = {}
+
+  validation {
+    condition = (
+      coalesce(try(var.asg.metadata_options.http_endpoint, null), "enabled") == "enabled"
+      || coalesce(try(var.asg.metadata_options.http_endpoint, null), "enabled") == "disabled"
+    )
+    error_message = "asg.metadata_options.http_endpoint must be either \"enabled\" or \"disabled\" when provided."
+  }
+
+  validation {
+    condition     = coalesce(try(var.asg.metadata_options.http_tokens, null), "required") == "required"
+    error_message = "asg.metadata_options.http_tokens is enforced as \"required\" for IMDSv2; omit it or set it to \"required\"."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.metadata_options.http_put_response_hop_limit == null, true)
+      || try(
+        var.asg.metadata_options.http_put_response_hop_limit >= 1
+        && var.asg.metadata_options.http_put_response_hop_limit <= 64,
+        false
+      )
+    )
+    error_message = "asg.metadata_options.http_put_response_hop_limit must be null or a value from 1 through 64."
+  }
+
+  validation {
+    condition = (
+      coalesce(try(var.asg.metadata_options.instance_metadata_tags, null), "disabled") == "enabled"
+      || coalesce(try(var.asg.metadata_options.instance_metadata_tags, null), "disabled") == "disabled"
+    )
+    error_message = "asg.metadata_options.instance_metadata_tags must be either \"enabled\" or \"disabled\" when provided."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.cloudwatch_agent.target.key, null) == null
+      || try(var.asg.cloudwatch_agent.target.key == "InstanceIds", false)
+      || try(startswith(var.asg.cloudwatch_agent.target.key, "tag:"), false)
+    )
+    error_message = "asg.cloudwatch_agent.target.key must be \"InstanceIds\" or \"tag:<TagKey>\" when provided."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.cloudwatch_agent.target.key, null) != "InstanceIds"
+      || length(coalesce(try(var.asg.cloudwatch_agent.target.values, null), [])) > 0
+    )
+    error_message = "asg.cloudwatch_agent.target.values must include at least one instance ID when asg.cloudwatch_agent.target.key is \"InstanceIds\"."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.cloudwatch_agent.restart, null) == null
+      || try(contains(["yes", "no"], var.asg.cloudwatch_agent.restart), false)
+    )
+    error_message = "asg.cloudwatch_agent.restart must be \"yes\" or \"no\" when provided."
+  }
 }
 
 ##
@@ -233,7 +295,7 @@ variable "asg" {
 #   update: "20m"  # (Optional) Timeout for create/update operations. Default: "20m".
 #   delete: "20m"  # (Optional) Timeout for delete operations. Default: "20m".
 variable "timeouts" {
-  description = "The timeouts of the EC2 Instance"
+  description = "The operation timeouts of the Auto Scaling Group"
   type        = any
   default     = {}
 }
@@ -245,12 +307,13 @@ variable "timeouts" {
 #   role_description: "Role for ${name}"  # (Optional) Description for the IAM role. Default: "IAM Instance Role ${local.name}".
 #   permissions_boundary: "arn:aws:iam::...:policy/..."  # (Optional) ARN of the permissions boundary policy. Default: null.
 #   logs_enabled: false  # (Optional) Enable CloudWatch Logs delivery policy. Default: false.
-#   role_policies:  # (Optional) Map or list of managed policy ARN attachments. CloudWatch Agent policies are attached automatically when iam.create = true and asg.cloudwatch_agent.enabled = true. Default: {}.
+#   ssm_enabled: true  # (Optional) Attach AmazonSSMManagedInstanceCore to the created IAM role. Set false only when an equivalent policy is supplied separately. Default: true.
+#   role_policies:  # (Optional) Map or list of additional managed policy ARN attachments; AmazonSSMManagedInstanceCore is attached by iam.ssm_enabled by default. Default: {}.
 #     CloudWatchAgentServerPolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 #   extra_tags:  # (Optional) Extra tags to apply to IAM resources. Default: {}.
 #     Team: "Platform"
 variable "iam" {
-  description = "The IAM role to use for the EC2 Instance"
+  description = "The IAM role and instance profile configuration for ASG instances"
   type        = any
   default     = {}
 }

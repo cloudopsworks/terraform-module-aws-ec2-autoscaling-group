@@ -1,18 +1,137 @@
 # Module configuration
-# Required variables
-{{- range .requiredVariables }}
-{{- if ne .Name "org"}}
-# Description {{ .Description }} , Type: {{ .Type }}
-{{ .Name }}: {{ .DefaultValuePlaceholder }}
-{{- end }}
+# Module-specific inputs only. Terragrunt hierarchy/scaffold supplies org, is_hub, spoke_def, and extra_tags.
+# Optional entries are provided as commented defaults. Uncomment only the settings you want to override.
 
-{{- end }}
-# Optional variables
-{{- range .optionalVariables }}
-{{- if ne .Name "is_hub" "spoke_def" "extra_args" }}
-# Description {{ .Description }} , Type: {{ .Type }}
-#{{ .Name }}: {{ .DefaultValue }}
-{{- end }}
+# name: "" # (Optional) Exact Auto Scaling Group base name. Set this or name_prefix. Default: "".
+# name_prefix: "" # (Optional) Prefix used to derive the final ASG name with the module naming convention. Default: "".
 
-{{- end }}
+asg:
+  # create: true # (Optional) Whether to create ASG resources. Default: true.
+  type: "t3.micro" # (Required unless using instance_requirements with a compatible mixed policy) Instance type for the Launch Template. Example: "t3.micro".
 
+  ami:
+    id: "ami-0123456789abcdef0" # (Required when ami.name is unset) AMI ID for the Launch Template. Replace with a valid AMI ID.
+    # name: null # (Optional) AMI name/pattern to search when ami.id is unset. Default: null.
+    # architecture: "x86_64" # (Optional) AMI architecture filter. Valid values include "x86_64" and "arm64". Default: "x86_64".
+    # most_recent: true # (Optional) Select the newest AMI matching filters. Default: true.
+    # owners: ["self"] # (Optional) AMI owners to search. Use "self", "amazon", "aws-marketplace", or AWS account IDs. Default: ["self"].
+    # filters: [] # (Optional) Additional aws_ami filters with name and values. Default: [].
+    # auto_update:
+    #   enabled: false # (Optional) Create EventBridge and SSM Automation resources to update the Launch Template AMI after AWS Backup recovery events. Default: false.
+    #   dead_letter_sqs: "" # (Optional) SQS queue ARN for EventBridge dead-letter delivery. Default: "".
+
+  # user_data: "" # (Optional) Plain-text user data. The module base64-encodes non-empty values. Default: "".
+  # user_data_base64: "" # (Optional) Base64-encoded user data used when user_data is empty. Default: "".
+  # user_data_file: null # (Optional) Local user data file to base64-encode when user_data and user_data_base64 are unset. Default: null.
+  # monitoring: false # (Optional) Enable detailed monitoring in the Launch Template. Default: false.
+
+  # cloudwatch_agent:
+  #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
+  #   install: true # (Optional) Create AWS-ConfigureAWSPackage association to install AmazonCloudWatchAgent. Default: true.
+  #   configure: true # (Optional) Create AmazonCloudWatch-ManageAgent association to configure and start the agent. Default: true.
+  #   attach_managed_policies: true # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
+  #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+  #   config_parameter_name: "AmazonCloudWatch-my-asg-config" # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-<name>-config".
+  #   append_default_configuration: true # (Optional) Shallow-merge custom configuration with the default memory/disk metric profile. Default: true.
+  #   namespace: "CWAgent" # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
+  #   metrics_collection_interval: 60 # (Optional) Metrics collection interval in seconds for the default configuration. Default: 60.
+  #   run_as_user: "root" # (Optional) Operating system user used by the default agent configuration. Default: "root".
+  #   configuration: {} # (Optional) Custom CloudWatch Agent configuration object encoded as JSON. Default: {}.
+  #   package_name: "AmazonCloudWatchAgent" # (Optional) Package name passed to AWS-ConfigureAWSPackage. Default: "AmazonCloudWatchAgent".
+  #   package_version: "latest" # (Optional) Package version passed to AWS-ConfigureAWSPackage. Default: "latest".
+  #   installation_type: "Uninstall and reinstall" # (Optional) Package update mode. Default: "Uninstall and reinstall".
+  #   mode: "ec2" # (Optional) AmazonCloudWatch-ManageAgent mode. Valid values include "ec2", "onPremise", and "auto". Default: "ec2".
+  #   restart: "yes" # (Optional) Restart/start the agent after configuration. Valid values: "yes", "no". Default: "yes".
+  #   target:
+  #     key: "tag:CloudWatchAgent" # (Optional) SSM target key. Use "tag:<TagKey>" or "InstanceIds". Default: "tag:<workload_detection.tag_key>".
+  #     values: ["enabled"] # (Optional) SSM target values. Required when key is "InstanceIds"; otherwise defaults to [workload_detection.tag_value].
+  #   schedule_expression: null # (Optional) State Manager schedule expression, for example "rate(1 day)". Default: null.
+  #   max_concurrency: "10%" # (Optional) Maximum concurrent association executions. Default: AWS default.
+  #   max_errors: "1" # (Optional) Maximum failed association executions. Default: AWS default.
+  #   wait_for_success_timeout_seconds: null # (Optional) Seconds Terraform waits for association success. Default: provider default.
+  #   workload_detection:
+  #     enabled: false # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
+  #     tag_key: "CloudWatchAgent" # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
+  #     tag_value: "enabled" # (Optional) EC2 instance tag value used for SSM targeting and CloudWatch console tag-based deployment. Default: "enabled".
+
+  # ebs:
+  #   ebs_optimized: null # (Optional) Enable EBS optimization when supported by the instance type. Default: AWS/AMI default.
+  #   block_device: [] # (Optional) List of block device mappings. Each item supports device_name, volume_size, volume_type, iops, throughput, encrypted, kms_key_id, delete_on_termination, no_device, and virtual_name. Default: [].
+
+  # spot:
+  #   enabled: false # (Optional) Enable Spot market options in the Launch Template. Default: false.
+  #   interruption_behavior: "terminate" # (Optional) Action on interruption. Valid values: "hibernate", "stop", "terminate". Default: "terminate".
+  #   instance_type: "one-time" # (Optional) Spot request type. Valid values: "one-time", "persistent". Default: null.
+  #   block_duration_minutes: null # (Optional) Fixed hourly block duration in minutes; valid multiples of 60 from 60 through 360. Default: null.
+
+  # instance_requirements:
+  #   instance_types: ["t3a.micro"] # (Optional) Allowed instance type names for flexible selection. Default: null.
+  #   memory_mib:
+  #     min: 0 # (Optional) Minimum memory in MiB. Default: 0.
+  #     max: null # (Optional) Maximum memory in MiB. Default: null.
+  #   vcpu_count:
+  #     min: 0 # (Optional) Minimum vCPU count. Default: 0.
+  #     max: null # (Optional) Maximum vCPU count. Default: null.
+
+  # metadata_options:
+  #   http_endpoint: "enabled" # (Optional) IMDS endpoint state. Valid values: "enabled", "disabled". Default: "enabled".
+  #   http_put_response_hop_limit: null # (Optional) IMDS hop limit from 1 through 64. Default: null.
+  #   http_tokens: "required" # (Optional) IMDS token requirement; IMDSv2 is enforced and "optional" is rejected. Default: "required".
+  #   instance_metadata_tags: "disabled" # (Optional) Expose tags through IMDS. Valid values: "enabled", "disabled". Default: "disabled".
+
+  # key_pair:
+  #   create: false # (Optional) Generate and attach a new AWS key pair. Default: false.
+  #   name: null # (Optional) Existing or generated key pair name. When create=true and omitted, the module derives the name. Default: null.
+  # secrets_manager_enabled: true # (Optional) Store generated key material in AWS Secrets Manager when key_pair.create=true. Default: true.
+
+  vpc:
+    subnet_ids: ["subnet-0123456789abcdef0", "subnet-abcdef0123456789"] # (Required) Subnet IDs where ASG instances launch.
+    # security_group_ids: [] # (Optional) Existing security groups to attach, in addition to a managed security group when enabled. Default: [].
+    # availability_zones: [] # (Optional) Explicit AZs for the ASG. Default: provider computes from subnets.
+
+  # security_group:
+  #   create: false # (Optional) Create a dedicated security group in the VPC of the first subnet. Default: false.
+  #   rules: {} # (Optional) Map of rule objects. Each rule supports description, type, from_port, to_port, protocol, cidr_blocks, ipv6_cidr_blocks, self, source_security_group, and source_security_group_id. Default: {}.
+
+  # min_size: 1 # (Optional) Minimum number of instances in the ASG. Default: 1.
+  # max_size: 1 # (Optional) Maximum number of instances in the ASG. Default: 1.
+  # desired_capacity: 1 # (Optional) Desired capacity. Default: asg.desired or 1.
+  # desired: 1 # (Optional) Legacy alias for desired_capacity. Default: 1.
+  # enabled_metrics: [] # (Optional) ASG metrics to collect. Default: null/provider default.
+  # termination_policies: [] # (Optional) Termination policies. Valid values include "OldestInstance", "OldestLaunchTemplate", "ClosestToNextInstanceHour", and "Default". Default: null/provider default.
+  # suspended_processes: [] # (Optional) Processes to suspend, such as "HealthCheck", "AZRebalance", "ReplaceUnhealthy", "AlarmNotification", "ScheduledActions", or "AddToLoadBalancer". Default: null/provider default.
+  # health_check:
+  #   type: "ELB" # (Optional) Health check type. Valid values: "EC2", "ELB". Default: "ELB".
+  #   grace_period: 300 # (Optional) Seconds to ignore unhealthy checks after launch. Default: 300.
+  # force_delete: false # (Optional) Force delete the ASG and all instances. Default: false.
+  # availability_zone_distribution: null # (Optional) Capacity distribution strategy. Valid values include "balanced" and "prioritized". Default: null.
+  # mixed_instances: false # (Optional) Use a Mixed Instances Policy with overrides. Default: false.
+  # instance_types: [] # (Optional) Override list for mixed instances; each item supports type and optional capacity. Default: [].
+  # instance_refresh:
+  #   enabled: false # (Optional) Enable rolling instance refresh. Default: false.
+  #   strategy: "Rolling" # (Optional) Refresh strategy. Valid value: "Rolling". Default: "Rolling".
+  #   min_healthy_percentage: 90 # (Optional) Minimum healthy percentage during refresh. Default: 90.
+  #   max_healthy_percentage: null # (Optional) Maximum healthy percentage during refresh. Default: null.
+  #   instance_warmup: null # (Optional) Warm-up time in seconds. Default: null.
+  #   triggers: [] # (Optional) Events that trigger refresh, for example ["launch_template"]. Default: null/provider default.
+  # extra_tags: {} # (Optional) Additional tags merged into instance tag specifications. Default: {}.
+  # backup:
+  #   enabled: false # (Optional) Apply AWS Backup discovery tags. Default: false.
+  #   only_tag: true # (Optional) Only tag instances for backup selection. Default: true.
+  #   schedule: "daily" # (Optional) Backup schedule tag. Valid values: "hourly", "daily", "weekly", "monthly". Default: "daily".
+  # scaling_policies: [] # (Optional) List of Auto Scaling policies; supports target tracking, predictive scaling, and simple/step scaling fields. Default: {}.
+
+# timeouts:
+#   update: "20m" # (Optional) Timeout for ASG update/delete operations. Default: "20m".
+#   delete: "20m" # (Optional) Timeout for ASG delete operations. Default: "20m".
+
+# iam:
+#   create: true # (Optional) Create IAM role and instance profile and attach to instances. Default: true.
+#   ssm_enabled: true # (Optional) Attach AmazonSSMManagedInstanceCore to the created IAM role. Set false only when an equivalent policy is supplied separately. Default: true.
+#   path: null # (Optional) IAM path for created role and instance profile. Default: null.
+#   role_description: null # (Optional) Custom description for the created IAM role. Default: "IAM Instance Role <name>".
+#   permissions_boundary: null # (Optional) IAM permissions boundary ARN for the created role. Default: null.
+#   logs_enabled: false # (Optional) Attach inline CloudWatch Logs delivery policy. Default: false.
+#   role_policies: {} # (Optional) Map or list of additional managed policy attachments; AmazonSSMManagedInstanceCore is attached by iam.ssm_enabled by default. Default: {}.
+#   policies: [] # (Optional) Inline IAM policies to create. Each item supports name and statements; statements support sid, effect, actions, resources, principals, and conditions. Default: [].
+#   extra_tags: {} # (Optional) Additional tags for IAM resources. Default: {}.
