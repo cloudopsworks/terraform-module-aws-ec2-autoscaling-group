@@ -10,26 +10,41 @@ data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 
 locals {
-  iam_role_name              = "${local.name}-asg-role"
+  iam_role_name                            = "${local.name}-asg-role"
+  iam_ssm_managed_instance_core_policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  iam_ssm_enabled = (
+    try(var.asg.create, true)
+    && try(var.iam.create, true)
+    && coalesce(try(tobool(var.iam.ssm_enabled), null), true)
+  )
   iam_role_policy_input      = try(var.iam.role_policies, null)
   iam_role_policy_normalized = local.iam_role_policy_input == null ? {} : local.iam_role_policy_input
   iam_role_policies = can(tomap(local.iam_role_policy_normalized)) ? tomap(local.iam_role_policy_normalized) : {
     for index, policy_arn in local.iam_role_policy_normalized : tostring(index) => policy_arn
   }
   iam_role_policy_names = keys(local.iam_role_policies)
-  iam_role_policy_arns  = values(local.iam_role_policies)
+  iam_role_policy_arns = toset([
+    for arn in values(local.iam_role_policies) : trimspace(arn)
+  ])
+  iam_managed_policy_attachment_arns = setunion(
+    local.iam_role_policy_arns,
+    local.iam_ssm_enabled ? toset([local.iam_ssm_managed_instance_core_policy_arn]) : toset([])
+  )
+  cloudwatch_agent_server_policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/CloudWatchAgentServerPolicy"
   cloudwatch_agent_policies = {
-    CloudWatchAgentServerPolicy  = "arn:${data.aws_partition.current.partition}:iam::aws:policy/CloudWatchAgentServerPolicy"
-    AmazonSSMManagedInstanceCore = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+    CloudWatchAgentServerPolicy = local.cloudwatch_agent_server_policy_arn
   }
   cloudwatch_agent_role_policies = {
     for name, arn in local.cloudwatch_agent_policies : name => arn
     if(
-      (name == "CloudWatchAgentServerPolicy" && local.cloudwatch_agent_enabled) ||
-      (name == "AmazonSSMManagedInstanceCore" && (local.cloudwatch_agent_install_enabled || local.cloudwatch_agent_configure_enabled))
-    ) && !contains(local.iam_role_policy_names, name) && !contains(local.iam_role_policy_arns, arn)
+      name == "CloudWatchAgentServerPolicy"
+      && local.cloudwatch_agent_managed_policies_enabled
+    ) && !contains(local.iam_role_policy_names, name) && !contains(local.iam_managed_policy_attachment_arns, arn)
   }
   effective_iam_role_policies = merge(local.iam_role_policies, local.cloudwatch_agent_role_policies)
+  cloudwatch_agent_attached_managed_policy_arns = [
+    for policy_arn in values(local.cloudwatch_agent_role_policies) : policy_arn
+  ]
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -97,9 +112,23 @@ resource "aws_iam_role_policy" "policy" {
 
 resource "aws_iam_role_policy_attachment" "this" {
   for_each = {
-    for k, v in local.effective_iam_role_policies : k => v if try(var.asg.create, true) && try(var.iam.create, true)
+    for k, v in local.effective_iam_role_policies : k => v
+    if(
+      try(var.asg.create, true)
+      && try(var.iam.create, true)
+      && !(
+        local.iam_ssm_enabled
+        && try(trimspace(v), "") == local.iam_ssm_managed_instance_core_policy_arn
+      )
+    )
   }
   policy_arn = each.value
+  role       = aws_iam_role.this[0].name
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
+  count      = local.iam_ssm_enabled ? 1 : 0
+  policy_arn = local.iam_ssm_managed_instance_core_policy_arn
   role       = aws_iam_role.this[0].name
 }
 
