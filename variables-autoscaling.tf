@@ -38,10 +38,12 @@ variable "name_prefix" {
 #         values: ["2025-*"]  # (Optional) Values for the above filter.
 #     auto_update:  # (Optional) Enable automated AMI roll-out via EventBridge + SSM Automation.
 #       enabled: false  # (Optional) When true, creates EventBridge rule and SSM doc to update the Launch Template to the latest AMI matching filters on backup completion events. Default: false.
+#       dead_letter_sqs: ""  # (Optional) SQS queue ARN for EventBridge dead-letter delivery of failed AMI update events. When set, the module also grants the rule permission to send to the queue. Default: "".
 #   user_data: |  # (Optional) Plain-text user data. Will be base64-encoded automatically if non-empty. Default: "".
 #     #!/bin/bash
 #     echo "hello"
 #   user_data_base64: ""  # (Optional) Base64-encoded user data. Used only when user_data is empty. Default: "".
+#   user_data_file: ""  # (Optional) Path to a local file whose contents are base64-encoded as user data. Used only when both user_data and user_data_base64 are empty. Default: "".
 #   monitoring: false  # (Optional) Detailed monitoring for instances (Launch Template). Default: false.
 #   cloudwatch_agent:  # (Optional) CloudWatch Agent installation, configuration, and workload-detection targeting.
 #     enabled: false  # (Optional) Enable CloudWatch Agent integration. Default: false.
@@ -122,7 +124,8 @@ variable "name_prefix" {
 #         cidr_blocks: ["0.0.0.0/0"]  # (Optional) IPv4 CIDR ranges.
 #         ipv6_cidr_blocks: []  # (Optional) IPv6 CIDR ranges.
 #         self: false  # (Optional) If true, the SG itself is a source/destination.
-#         source_security_group_id: ""  # (Optional) Source SG for ingress.
+#         source_security_group: ""  # (Optional) Source SG name to look up; when set it takes precedence over source_security_group_id. Default: "".
+#         source_security_group_id: ""  # (Optional) Source SG ID for ingress. Used when source_security_group is unset.
 #   min_size: 1  # (Optional) Minimum number of instances in the ASG. Default: 1.
 #   max_size: 2  # (Optional) Maximum number of instances in the ASG. Default: 1.
 #   desired_capacity: 1  # (Optional) Desired capacity. Default: 1.
@@ -310,6 +313,20 @@ variable "timeouts" {
 #   ssm_enabled: true  # (Optional) Attach AmazonSSMManagedInstanceCore to the created IAM role. Set false only when an equivalent policy is supplied separately. Default: true.
 #   role_policies:  # (Optional) Map or list of additional managed policy ARN attachments; AmazonSSMManagedInstanceCore is attached by iam.ssm_enabled by default. Default: {}.
 #     CloudWatchAgentServerPolicy: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+#   policies:  # (Optional) Inline IAM policies created and attached to the role. Default: [].
+#     - name: "extra-access"  # (Required) Name of the inline policy.
+#       statements:  # (Required) List of policy statements.
+#         - sid: "AllowS3Read"  # (Optional) Statement identifier.
+#           effect: "Allow"  # (Optional) Statement effect. Default: "Allow". Allowed values: "Allow", "Deny".
+#           actions: ["s3:GetObject"]  # (Required) List of IAM actions.
+#           resources: ["arn:aws:s3:::my-bucket/*"]  # (Required) List of resource ARNs.
+#           principals:  # (Optional) List of principals for the statement.
+#             - type: "AWS"  # (Required) Principal type, for example "AWS" or "Service".
+#               identifiers: ["arn:aws:iam::123456789012:root"]  # (Required) Principal identifiers.
+#           conditions:  # (Optional) List of statement conditions.
+#             - test: "StringEquals"  # (Required) Condition operator.
+#               variable: "s3:prefix"  # (Required) Condition key.
+#               values: ["home/"]  # (Required) Condition values.
 #   extra_tags:  # (Optional) Extra tags to apply to IAM resources. Default: {}.
 #     Team: "Platform"
 variable "iam" {
