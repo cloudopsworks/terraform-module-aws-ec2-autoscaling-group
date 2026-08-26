@@ -11,7 +11,9 @@ locals {
   escaped_asg_tags = [
     for tags in try(var.asg.ami.filters, []) : jsonencode(tags)
   ]
+  update_asg_name_doc = "${local.name}-asg-upd-ssm-doc"
 }
+
 data "aws_cloudwatch_event_bus" "default" {
   name = "default"
 }
@@ -35,7 +37,7 @@ resource "aws_cloudwatch_event_rule" "update_asg" {
 
 resource "aws_ssm_document" "update_asg" {
   count           = try(var.asg.ami.auto_update.enabled, false) ? 1 : 0
-  name            = "${local.name}-asg-upd-ssm-doc"
+  name            = local.update_asg_name_doc
   document_type   = "Automation"
   document_format = "YAML"
   tags            = local.all_tags
@@ -239,7 +241,7 @@ data "aws_iam_policy_document" "update_asg" {
     ]
     resources = [
       aws_ssm_document.update_asg[0].arn,
-      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:document/${aws_ssm_document.update_asg[0].name}"
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:document/${local.update_asg_name_doc}"
     ]
   }
 
