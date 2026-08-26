@@ -20,10 +20,10 @@ locals {
   cloudwatch_agent_target_tag_value            = coalesce(try(tostring(local.cloudwatch_agent_workload_detection_settings.tag_value), null), "enabled")
   cloudwatch_agent_tags                        = local.cloudwatch_agent_targeting_enabled ? { (local.cloudwatch_agent_target_tag_key) = local.cloudwatch_agent_target_tag_value } : {}
   cloudwatch_agent_target_key                  = coalesce(try(tostring(local.cloudwatch_agent_settings.target.key), null), "tag:${local.cloudwatch_agent_target_tag_key}")
-  cloudwatch_agent_target_values               = length(coalesce(try(local.cloudwatch_agent_settings.target.values, null), [])) > 0 ? local.cloudwatch_agent_settings.target.values : [local.cloudwatch_agent_target_tag_value]
+  cloudwatch_agent_target_values               = length(try(local.cloudwatch_agent_settings.target.values, [])) > 0 ? local.cloudwatch_agent_settings.target.values : [local.cloudwatch_agent_target_tag_value]
   cloudwatch_agent_config_parameter_name       = coalesce(try(tostring(local.cloudwatch_agent_settings.config_parameter_name), null), "AmazonCloudWatch-${local.name}-config")
   cloudwatch_agent_create_config_parameter     = coalesce(try(tobool(local.cloudwatch_agent_settings.create_config_parameter), null), true)
-  cloudwatch_agent_custom_configuration        = coalesce(try(local.cloudwatch_agent_settings.configuration, null), {})
+  cloudwatch_agent_custom_configuration        = try(local.cloudwatch_agent_settings.configuration, {})
   cloudwatch_agent_append_default_config       = coalesce(try(tobool(local.cloudwatch_agent_settings.append_default_configuration), null), true)
 
   cloudwatch_agent_default_configuration = {

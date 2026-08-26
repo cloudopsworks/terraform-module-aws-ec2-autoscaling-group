@@ -19,7 +19,7 @@ locals {
       Name = local.name
     }
   )
-  instance_metadata_options                     = coalesce(try(var.asg.metadata_options, null), {})
+  instance_metadata_options                     = try(var.asg.metadata_options, {})
   instance_metadata_http_endpoint               = coalesce(try(local.instance_metadata_options.http_endpoint, null), "enabled")
   instance_metadata_http_put_response_hop_limit = try(local.instance_metadata_options.http_put_response_hop_limit, null)
   instance_metadata_http_tokens                 = "required"
