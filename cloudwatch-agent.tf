@@ -62,10 +62,10 @@ locals {
     }
   }
 
-  cloudwatch_agent_configuration = local.cloudwatch_agent_append_default_config ? merge(
-    local.cloudwatch_agent_default_configuration,
-    local.cloudwatch_agent_custom_configuration
-  ) : local.cloudwatch_agent_custom_configuration
+  cloudwatch_agent_configuration = merge(concat(
+    local.cloudwatch_agent_append_default_config ? [local.cloudwatch_agent_default_configuration] : [],
+    [local.cloudwatch_agent_custom_configuration]
+  )...)
 }
 
 resource "aws_ssm_parameter" "cloudwatch_agent_config" {
