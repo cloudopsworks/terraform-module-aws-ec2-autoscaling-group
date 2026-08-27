@@ -152,7 +152,7 @@ variable "name_prefix" {
 #     max_healthy_percentage: 100  # (Optional) Maximum healthy percentage during refresh. Default: null.
 #     instance_warmup: 300  # (Optional) Warm-up time in seconds. Default: null.
 #     triggers: ["launch_template"]  # (Optional) Events that trigger refresh. Default: [].
-#   extra_tags:  # (Optional) Extra tags applied to instances. Launch Template tag specifications propagate these tags to instances, attached EBS volumes, and Spot instance requests when asg.spot.enabled = true.
+#   extra_tags:  # (Optional) Extra tags applied to instances. Launch Template tag specifications propagate these tags to instances, attached EBS volumes, network interfaces, and Spot instance requests when asg.spot.enabled = true.
 #     Owner: "you@example.com"
 #   backup:  # (Optional) Backup tagging for AWS Backup plan discovery.
 #     enabled: false  # (Optional) Add backup discovery tags. Default: false.
