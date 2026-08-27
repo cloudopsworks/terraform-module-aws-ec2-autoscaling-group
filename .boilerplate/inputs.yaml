@@ -24,6 +24,8 @@ asg:
   # user_data_base64: "" # (Optional) Base64-encoded user data used when user_data is empty. Default: "".
   # user_data_file: null # (Optional) Local user data file to base64-encode when user_data and user_data_base64 are unset. Default: null.
   # monitoring: false # (Optional) Enable detailed monitoring in the Launch Template. Default: false.
+  # license_specification: "" # (Optional) AWS License Manager license configuration ARN attached to the Launch Template. Leave empty or omit to skip. Default: "".
+  # auto_recovery: true # (Optional) Instance maintenance auto recovery. true is sent to the API as "default", false as "disabled". Omit to leave the maintenance option unmanaged. Default: null.
 
   # cloudwatch_agent:
   #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
@@ -78,6 +80,7 @@ asg:
   #   http_put_response_hop_limit: null # (Optional) IMDS hop limit from 1 through 64. Default: null.
   #   http_tokens: "required" # (Optional) IMDS token requirement; IMDSv2 is enforced and "optional" is rejected. Default: "required".
   #   instance_metadata_tags: "disabled" # (Optional) Expose tags through IMDS. Valid values: "enabled", "disabled". Default: "disabled".
+  #   http_protocol_ipv6: "disabled" # (Optional) Enable the IPv6 IMDS endpoint. Valid values: "enabled", "disabled". Default: "disabled".
 
   # key_pair:
   #   create: false # (Optional) Generate and attach a new AWS key pair. Default: false.
@@ -114,7 +117,7 @@ asg:
   #   max_healthy_percentage: null # (Optional) Maximum healthy percentage during refresh. Default: null.
   #   instance_warmup: null # (Optional) Warm-up time in seconds. Default: null.
   #   triggers: [] # (Optional) Events that trigger refresh, for example ["launch_template"]. Default: null/provider default.
-  # extra_tags: {} # (Optional) Additional tags merged into instance tag specifications. Default: {}.
+  # extra_tags: {} # (Optional) Additional tags merged into Launch Template tag specifications; applied to instances, attached EBS volumes, and Spot instance requests when spot.enabled=true. Default: {}.
   # backup:
   #   enabled: false # (Optional) Apply AWS Backup discovery tags. Default: false.
   #   only_tag: true # (Optional) Only tag instances for backup selection. Default: true.

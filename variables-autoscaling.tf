@@ -45,6 +45,8 @@ variable "name_prefix" {
 #   user_data_base64: ""  # (Optional) Base64-encoded user data. Used only when user_data is empty. Default: "".
 #   user_data_file: ""  # (Optional) Path to a local file whose contents are base64-encoded as user data. Used only when both user_data and user_data_base64 are empty. Default: "".
 #   monitoring: false  # (Optional) Detailed monitoring for instances (Launch Template). Default: false.
+#   license_specification: "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-0123456789abcdef"  # (Optional) License Manager license configuration ARN attached to the Launch Template. Omit or set to "" to skip. Default: "".
+#   auto_recovery: true  # (Optional) Instance maintenance auto recovery. true maps to "default", false maps to "disabled"; omit to leave unmanaged. Default: null.
 #   cloudwatch_agent:  # (Optional) CloudWatch Agent installation, configuration, and workload-detection targeting.
 #     enabled: false  # (Optional) Enable CloudWatch Agent integration. Default: false.
 #     install: true  # (Optional) Create an SSM State Manager association using AWS-ConfigureAWSPackage to install AmazonCloudWatchAgent. Default: true.
@@ -104,6 +106,7 @@ variable "name_prefix" {
 #     http_put_response_hop_limit: null  # (Optional) Allowed network hops for PUT (1-64). Default: null.
 #     http_tokens: "required"  # (Optional) Require IMDSv2 session tokens. Default: "required"; "optional" is rejected.
 #     instance_metadata_tags: "disabled"  # (Optional) Include instance tags in IMDS. Default: "disabled". Allowed values: "enabled", "disabled".
+#     http_protocol_ipv6: "disabled"  # (Optional) Enable the IPv6 IMDS endpoint. Default: "disabled". Allowed values: "enabled", "disabled".
 #   key_pair:  # (Optional) Module-managed EC2 key pair.
 #     create: false  # (Optional) Create and attach a key pair. Default: false.
 #     name: ""  # (Optional) Key pair name when create = true. Default: "key/${local.name}".
@@ -149,7 +152,7 @@ variable "name_prefix" {
 #     max_healthy_percentage: 100  # (Optional) Maximum healthy percentage during refresh. Default: null.
 #     instance_warmup: 300  # (Optional) Warm-up time in seconds. Default: null.
 #     triggers: ["launch_template"]  # (Optional) Events that trigger refresh. Default: [].
-#   extra_tags:  # (Optional) Extra tags applied to instances.
+#   extra_tags:  # (Optional) Extra tags applied to instances. Launch Template tag specifications propagate these tags to instances, attached EBS volumes, and Spot instance requests when asg.spot.enabled = true.
 #     Owner: "you@example.com"
 #   backup:  # (Optional) Backup tagging for AWS Backup plan discovery.
 #     enabled: false  # (Optional) Add backup discovery tags. Default: false.
