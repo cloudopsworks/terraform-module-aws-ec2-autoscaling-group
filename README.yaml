@@ -22,7 +22,7 @@ description: |-
   - Backup discovery tagging.
   - AWS License Manager license configuration attachment and EC2 instance maintenance auto recovery.
   - IMDSv2 enforcement with optional IPv6 metadata endpoint.
-  - Launch Template tag specifications for instances, EBS volumes, and Spot instance requests.
+  - Launch Template tag specifications for instances, EBS volumes, network interfaces, and Spot instance requests.
   - Optional CloudWatch Agent installation/configuration through Systems Manager, with tags for CloudWatch workload detection and tag-based deployment.
   - Detailed configuration through a single `asg` input object.
 
@@ -183,7 +183,7 @@ usage: |-
     #   max_healthy_percentage: null # (Optional) Maximum healthy percentage during refresh. Default: null.
     #   instance_warmup: null # (Optional) Warm-up time in seconds. Default: null.
     #   triggers: [] # (Optional) Events that trigger refresh, for example ["launch_template"]. Default: null/provider default.
-    # extra_tags: {} # (Optional) Additional tags merged into Launch Template tag specifications; applied to instances, attached EBS volumes, and Spot instance requests when spot.enabled=true. Default: {}.
+    # extra_tags: {} # (Optional) Additional tags merged into Launch Template tag specifications; applied to instances, attached EBS volumes, network interfaces, and Spot instance requests when spot.enabled=true. Default: {}.
     # backup:
     #   enabled: false # (Optional) Apply AWS Backup discovery tags. Default: false.
     #   only_tag: true # (Optional) Only tag instances for backup selection. Default: true.
@@ -357,8 +357,8 @@ examples: |-
         http_protocol_ipv6     = "enabled" # IMDSv2 is always enforced (http_tokens = "required").
       }
 
-      # Tags below are applied to instances, attached EBS volumes, and — when
-      # spot.enabled = true — to Spot instance requests as well.
+      # Tags below are applied to instances, attached EBS volumes, network
+      # interfaces, and — when spot.enabled = true — to Spot instance requests.
       extra_tags = {
         CostCenter = "platform"
       }

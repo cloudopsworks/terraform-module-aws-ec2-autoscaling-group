@@ -117,7 +117,7 @@ asg:
   #   max_healthy_percentage: null # (Optional) Maximum healthy percentage during refresh. Default: null.
   #   instance_warmup: null # (Optional) Warm-up time in seconds. Default: null.
   #   triggers: [] # (Optional) Events that trigger refresh, for example ["launch_template"]. Default: null/provider default.
-  # extra_tags: {} # (Optional) Additional tags merged into Launch Template tag specifications; applied to instances, attached EBS volumes, and Spot instance requests when spot.enabled=true. Default: {}.
+  # extra_tags: {} # (Optional) Additional tags merged into Launch Template tag specifications; applied to instances, attached EBS volumes, network interfaces, and Spot instance requests when spot.enabled=true. Default: {}.
   # backup:
   #   enabled: false # (Optional) Apply AWS Backup discovery tags. Default: false.
   #   only_tag: true # (Optional) Only tag instances for backup selection. Default: true.

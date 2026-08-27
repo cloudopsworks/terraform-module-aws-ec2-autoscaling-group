@@ -140,6 +140,10 @@ resource "aws_launch_template" "this" {
     resource_type = "volume"
     tags          = local.instance_tags
   }
+  tag_specifications {
+    resource_type = "network-interface"
+    tags          = local.instance_tags
+  }
   dynamic "tag_specifications" {
     for_each = try(var.asg.spot.enabled, false) ? [1] : []
     content {
