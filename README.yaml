@@ -20,6 +20,9 @@ description: |-
   - Target tracking and predictive scaling policies.
   - Rolling Instance Refresh.
   - Backup discovery tagging.
+  - AWS License Manager license configuration attachment and EC2 instance maintenance auto recovery.
+  - IMDSv2 enforcement with optional IPv6 metadata endpoint.
+  - Launch Template tag specifications for instances, EBS volumes, and Spot instance requests.
   - Optional CloudWatch Agent installation/configuration through Systems Manager, with tags for CloudWatch workload detection and tag-based deployment.
   - Detailed configuration through a single `asg` input object.
 
@@ -28,8 +31,9 @@ introduction: |-
   This module simplifies creating production‑ready Auto Scaling Groups on AWS. It
   wraps common building blocks (Launch Template, ASG, SG, IAM, Key Pair, Secrets
   Manager) and exposes a single structured input `asg` that covers image selection,
-  user data, storage, Spot, IMDS settings, networking, scaling, and instance
-  refresh. Additional inputs allow you to integrate the module with your
+  user data, storage, Spot, IMDS settings, networking, scaling, instance
+  refresh, License Manager associations, and instance maintenance auto
+  recovery. Additional inputs allow you to integrate the module with your
   organization conventions and tagging strategy. When enabled, the module can
   install and configure the CloudWatch Agent through AWS Systems Manager State
   Manager and tag launched instances for CloudWatch workload detection workflows.
@@ -86,6 +90,8 @@ usage: |-
     # user_data_base64: "" # (Optional) Base64-encoded user data used when user_data is empty. Default: "".
     # user_data_file: null # (Optional) Local user data file to base64-encode when user_data and user_data_base64 are unset. Default: null.
     # monitoring: false # (Optional) Enable detailed monitoring in the Launch Template. Default: false.
+    # license_specification: "" # (Optional) AWS License Manager license configuration ARN attached to the Launch Template. Leave empty or omit to skip. Default: "".
+    # auto_recovery: true # (Optional) Instance maintenance auto recovery. true is sent to the API as "default", false as "disabled". Omit to leave the maintenance option unmanaged. Default: null.
 
     # cloudwatch_agent:
     #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
@@ -140,6 +146,7 @@ usage: |-
     #   http_put_response_hop_limit: null # (Optional) IMDS hop limit from 1 through 64. Default: null.
     #   http_tokens: "required" # (Optional) IMDS token requirement; IMDSv2 is enforced and "optional" is rejected. Default: "required".
     #   instance_metadata_tags: "disabled" # (Optional) Expose tags through IMDS. Valid values: "enabled", "disabled". Default: "disabled".
+    #   http_protocol_ipv6: "disabled" # (Optional) Enable the IPv6 IMDS endpoint. Valid values: "enabled", "disabled". Default: "disabled".
 
     # key_pair:
     #   create: false # (Optional) Generate and attach a new AWS key pair. Default: false.
@@ -176,7 +183,7 @@ usage: |-
     #   max_healthy_percentage: null # (Optional) Maximum healthy percentage during refresh. Default: null.
     #   instance_warmup: null # (Optional) Warm-up time in seconds. Default: null.
     #   triggers: [] # (Optional) Events that trigger refresh, for example ["launch_template"]. Default: null/provider default.
-    # extra_tags: {} # (Optional) Additional tags merged into instance tag specifications. Default: {}.
+    # extra_tags: {} # (Optional) Additional tags merged into Launch Template tag specifications; applied to instances, attached EBS volumes, and Spot instance requests when spot.enabled=true. Default: {}.
     # backup:
     #   enabled: false # (Optional) Apply AWS Backup discovery tags. Default: false.
     #   only_tag: true # (Optional) Only tag instances for backup selection. Default: true.
@@ -314,6 +321,47 @@ examples: |-
     iam = {
       create      = true # CloudWatchAgentServerPolicy is attached when the agent is enabled.
       ssm_enabled = true # AmazonSSMManagedInstanceCore is attached once by default for SSM access.
+    }
+  }
+  ```
+
+  ### License Manager, Auto Recovery, and IPv6 IMDS Example
+
+  ```hcl
+  terraform {
+    source = "git::https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group.git//?ref=vX.Y.Z"
+  }
+
+  inputs = {
+    org = {
+      organization_name = "acme"
+      organization_unit = "platform"
+      environment_type  = "prod"
+      environment_name  = "licensed"
+    }
+    name = "licensed-app"
+    asg = {
+      type = "m5.large"
+      ami  = { id = "ami-0123456789abcdef0" }
+      vpc  = { subnet_ids = ["subnet-12345678"] }
+
+      # Attach an AWS License Manager license configuration to the Launch Template.
+      license_specification = "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-0123456789abcdef"
+
+      # Instance maintenance auto recovery: true -> "default", false -> "disabled".
+      auto_recovery = true
+
+      metadata_options = {
+        http_endpoint          = "enabled"
+        instance_metadata_tags = "enabled"
+        http_protocol_ipv6     = "enabled" # IMDSv2 is always enforced (http_tokens = "required").
+      }
+
+      # Tags below are applied to instances, attached EBS volumes, and — when
+      # spot.enabled = true — to Spot instance requests as well.
+      extra_tags = {
+        CostCenter = "platform"
+      }
     }
   }
   ```

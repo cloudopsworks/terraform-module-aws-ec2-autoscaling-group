@@ -24,6 +24,7 @@ locals {
   instance_metadata_http_put_response_hop_limit = try(local.instance_metadata_options.http_put_response_hop_limit, null)
   instance_metadata_http_tokens                 = "required"
   instance_metadata_tags                        = coalesce(try(local.instance_metadata_options.instance_metadata_tags, null), "disabled")
+  instance_metadata_ipv6                        = coalesce(try(local.instance_metadata_options.http_protocol_ipv6, null), "disabled")
 }
 
 data "aws_ami" "this" {
@@ -99,6 +100,18 @@ resource "aws_launch_template" "this" {
       }
     }
   }
+  dynamic "license_specification" {
+    for_each = try(var.asg.license_specification, "") != "" ? [1] : []
+    content {
+      license_configuration_arn = var.asg.license_specification
+    }
+  }
+  dynamic "maintenance_options" {
+    for_each = try(tobool(var.asg.auto_recovery), null) != null ? [1] : []
+    content {
+      auto_recovery = tobool(var.asg.auto_recovery) ? "default" : "disabled"
+    }
+  }
   dynamic "iam_instance_profile" {
     for_each = try(var.iam.create, true) ? [1] : []
     content {
@@ -116,11 +129,23 @@ resource "aws_launch_template" "this" {
     http_put_response_hop_limit = local.instance_metadata_http_put_response_hop_limit
     http_tokens                 = local.instance_metadata_http_tokens
     instance_metadata_tags      = local.instance_metadata_tags
+    http_protocol_ipv6          = local.instance_metadata_ipv6
   }
   vpc_security_group_ids = try(var.asg.security_group.create, false) ? concat([aws_security_group.this[0].id], try(var.asg.vpc.security_group_ids, [])) : try(var.asg.vpc.security_group_ids, null)
   tag_specifications {
     resource_type = "instance"
     tags          = local.instance_tags
+  }
+  tag_specifications {
+    resource_type = "volume"
+    tags          = local.instance_tags
+  }
+  dynamic "tag_specifications" {
+    for_each = try(var.asg.spot.enabled, false) ? [1] : []
+    content {
+      resource_type = "spot-instances-request"
+      tags          = local.instance_tags
+    }
   }
   tags = local.all_tags
 }
