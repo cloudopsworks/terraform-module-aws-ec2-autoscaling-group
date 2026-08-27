@@ -134,7 +134,7 @@ resource "aws_launch_template" "this" {
   vpc_security_group_ids = try(var.asg.security_group.create, false) ? concat([aws_security_group.this[0].id], try(var.asg.vpc.security_group_ids, [])) : try(var.asg.vpc.security_group_ids, null)
   tag_specifications {
     resource_type = "instance"
-    tags          = local.instance_tags
+    tags          = merge(local.all_tags, local.cloudwatch_agent_tags)
   }
   tag_specifications {
     resource_type = "volume"
