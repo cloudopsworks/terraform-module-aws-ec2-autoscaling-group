@@ -151,7 +151,7 @@ resource "aws_launch_template" "this" {
       tags          = local.instance_tags
     }
   }
-  tags = local.all_tags
+  tags = merge(local.all_tags, local.cloudwatch_agent_tags)
 }
 
 resource "aws_autoscaling_group" "this" {
