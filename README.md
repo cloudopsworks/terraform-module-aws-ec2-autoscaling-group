@@ -124,6 +124,7 @@ asg:
   # user_data: "" # (Optional) Plain-text user data. The module base64-encodes non-empty values. Default: "".
   # user_data_base64: "" # (Optional) Base64-encoded user data used when user_data is empty. Default: "".
   # user_data_file: null # (Optional) Local user data file to base64-encode when user_data and user_data_base64 are unset. Default: null.
+  # user_data_compressed: false # (Optional) Gzip-compress the user data before base64 encoding. Applies to user_data and user_data_file; user_data_base64 is passed through untouched. Helps stay within the 16 KB EC2 user data limit. Default: false.
   # monitoring: false # (Optional) Enable detailed monitoring in the Launch Template. Default: false.
   # license_specification: "" # (Optional) AWS License Manager license configuration ARN attached to the Launch Template. Leave empty or omit to skip. Default: "".
   # auto_recovery: true # (Optional) Instance maintenance auto recovery. true is sent to the API as "default", false as "disabled". Omit to leave the maintenance option unmanaged. Default: null.
