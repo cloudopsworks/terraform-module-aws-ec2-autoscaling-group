@@ -44,6 +44,7 @@ variable "name_prefix" {
 #     echo "hello"
 #   user_data_base64: ""  # (Optional) Base64-encoded user data. Used only when user_data is empty. Default: "".
 #   user_data_file: ""  # (Optional) Path to a local file whose contents are base64-encoded as user data. Used only when both user_data and user_data_base64 are empty. Default: "".
+#   user_data_compressed: false  # (Optional) Gzip-compress the user data before base64 encoding (base64gzip instead of base64encode). Applies to user_data and user_data_file only; user_data_base64 is passed through untouched. Useful to stay within the 16 KB EC2 user data limit. Default: false.
 #   monitoring: false  # (Optional) Detailed monitoring for instances (Launch Template). Default: false.
 #   license_specification: "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-0123456789abcdef"  # (Optional) License Manager license configuration ARN attached to the Launch Template. Omit or set to "" to skip. Default: "".
 #   auto_recovery: true  # (Optional) Instance maintenance auto recovery. true maps to "default", false maps to "disabled"; omit to leave unmanaged. Default: null.
