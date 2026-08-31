@@ -62,10 +62,20 @@ asg:
   #   block_device: [] # (Optional) List of block device mappings. Each item supports device_name, volume_size, volume_type, iops, throughput, encrypted, kms_key_id, delete_on_termination, no_device, and virtual_name. Default: [].
 
   # spot:
-  #   enabled: false # (Optional) Enable Spot market options in the Launch Template. Default: false.
-  #   interruption_behavior: "terminate" # (Optional) Action on interruption. Valid values: "hibernate", "stop", "terminate". Default: "terminate".
-  #   instance_type: "one-time" # (Optional) Spot request type. Valid values: "one-time", "persistent". Default: null.
-  #   block_duration_minutes: null # (Optional) Fixed hourly block duration in minutes; valid multiples of 60 from 60 through 360. Default: null.
+  #   enabled: false # (Optional) Enable Spot. Default: false. With mixed_instances.enabled=false this sets Launch Template market options for a single instance type; with mixed_instances.enabled=true it drives the ASG mixed instances policy across every override and no market options are placed on the Launch Template, because AWS rejects that combination.
+  #   interruption_behavior: "terminate" # (Optional) Action on interruption; Launch Template mode only. Valid values: "hibernate", "stop", "terminate". Default: "terminate".
+  #   instance_type: "one-time" # (Optional) Spot request type; Launch Template mode only. Valid values: "one-time", "persistent". Default: null.
+  #   max_price: null # (Optional) Maximum hourly price; Launch Template mode only. Default: null, meaning the On-Demand price.
+  #   capacity_rebalance: null # (Optional) Proactively replace Spot instances that receive a rebalance recommendation instead of waiting for the two-minute interruption notice. Default: null. Note that AWS may temporarily exceed max_size by up to 10 percent of desired capacity while rebalancing, and graceful shutdown depends on lifecycle hooks this module does not yet manage.
+  #   distribution: # (Optional) Mixed instances policy distribution; used only when mixed_instances.enabled=true. When spot.enabled=true and this is omitted the module defaults to 100 percent Spot using the price-capacity-optimized strategy.
+  #     on_demand:
+  #       allocation_strategy: null # (Optional) Valid values: "lowest-price", "prioritized". Default: null.
+  #       base_capacity: 0 # (Optional) Absolute number of On-Demand instances launched before any Spot capacity. Default: 0 when spot.enabled=true.
+  #       percentage_above_base: 0 # (Optional) Percentage of capacity above base_capacity fulfilled On-Demand, from 0 through 100. Default: 0 when spot.enabled=true, meaning all Spot.
+  #     spot:
+  #       allocation_strategy: "price-capacity-optimized" # (Optional) Valid values: "lowest-price", "capacity-optimized", "capacity-optimized-prioritized", "price-capacity-optimized". Default: "price-capacity-optimized" when spot.enabled=true. AWS discourages "lowest-price" because replacement instances land in pools just as likely to be interrupted.
+  #       instance_pools: null # (Optional) Number of Spot pools to diversify across; only valid with the "lowest-price" strategy. Default: null.
+  #       max_price: null # (Optional) Maximum hourly price. Default: null, meaning the On-Demand price.
 
   # instance_requirements:
   #   instance_types: ["t3a.micro"] # (Optional) Allowed instance type names for flexible selection. Default: null.
@@ -109,8 +119,24 @@ asg:
   #   grace_period: 300 # (Optional) Seconds to ignore unhealthy checks after launch. Default: 300.
   # force_delete: false # (Optional) Force delete the ASG and all instances. Default: false.
   # availability_zone_distribution: null # (Optional) Capacity distribution strategy. Valid values include "balanced" and "prioritized". Default: null.
-  # mixed_instances: false # (Optional) Use a Mixed Instances Policy with overrides. Default: false.
-  # instance_types: [] # (Optional) Override list for mixed instances; each item supports type and optional capacity. Default: [].
+  # mixed_instances: # (Optional) Mixed Instances Policy. Also accepts a plain boolean for backwards compatibility, in which case overrides are read from the deprecated instance_types key.
+  #   enabled: false # (Optional) Use a Mixed Instances Policy. Default: false. Combine with spot.enabled=true for multi-size Spot.
+  #   overrides: [] # (Required when enabled) List of overrides. Each entry sets exactly one of type or instance_requirements.
+  #     # - type: "m6i.large" # (Optional) Explicit instance type. Mutually exclusive with instance_requirements.
+  #     #   capacity: "2" # (Optional) Weighted capacity in units. Default: null, meaning AWS weights every type equally. Must be set on all overrides or none, and desired_capacity must be at least twice the largest weight. Keep the spread between weights narrow.
+  #     #   launch_template_id: null # (Optional) Override Launch Template, for example to pair an arm64 type with a matching AMI. Default: the module-managed Launch Template.
+  #     #   launch_template_version: "$Latest" # (Optional) Version of the override Launch Template. Default: "$Latest".
+  #     # - instance_requirements: # (Optional) Attribute-based instance selection. Mutually exclusive with type. Lets AWS pick every matching type, which widens Spot pool diversity and lowers interruption risk.
+  #     #     vcpu_count: { min: 4, max: 16 } # (Required) vCPU range; min is required, max defaults to null.
+  #     #     memory_mib: { min: 8192, max: 65536 } # (Required) Memory range in MiB; min is required, max defaults to null.
+  #     #     allowed_instance_types: [] # (Optional) Restrict selection to these type patterns. Default: null.
+  #     #     excluded_instance_types: [] # (Optional) Exclude these type patterns. Default: null.
+  #     #     burstable_performance: null # (Optional) Valid values: "included", "excluded", "required". Default: null.
+  #     #     cpu_manufacturers: [] # (Optional) Valid values: "intel", "amd", "amazon-web-services". Default: null.
+  #     #     instance_generations: [] # (Optional) Valid values: "current", "previous". Default: null.
+  #     #     max_spot_price_percentage: null # (Optional) Cap Spot price as a percentage of the optimal On-Demand price. Default: null.
+  # instance_types: [] # (Deprecated) Legacy override list, superseded by mixed_instances.overrides. Still honoured when mixed_instances.overrides is unset. Default: [].
+  # desired_capacity_type: null # (Optional) Unit that desired_capacity, min_size, and max_size are expressed in. Valid values: "units", "vcpu", "memory-mib". Default: null, meaning "units". AWS recommends pairing "vcpu" or "memory-mib" with instance_requirements overrides so weights are derived automatically instead of hand-maintained.
   # instance_refresh:
   #   enabled: false # (Optional) Enable rolling instance refresh. Default: false.
   #   strategy: "Rolling" # (Optional) Refresh strategy. Valid value: "Rolling". Default: "Rolling".

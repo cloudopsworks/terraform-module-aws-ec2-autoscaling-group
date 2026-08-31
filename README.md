@@ -430,9 +430,21 @@ inputs = {
   name = "payments-worker"
   asg = {
     ami = { id = "ami-0123456789abcdef0" }
-    spot = { enabled = true, interruption_behavior = "terminate" }
-    mixed_instances = true
-    instance_types  = [{ type = "t3.micro", capacity = "1" }, { type = "t3a.micro", capacity = "1" }]
+    # Multi-size Spot: the mixed instances policy spreads Spot capacity across every
+    # override. Omitting spot.distribution defaults to 100% Spot using the
+    # price-capacity-optimized allocation strategy that AWS recommends.
+    spot = {
+      enabled            = true
+      capacity_rebalance = true
+    }
+    mixed_instances = {
+      enabled = true
+      overrides = [
+        { type = "m6i.large" },
+        { type = "m6a.large" },
+        { type = "m5.large" },
+      ]
+    }
     vpc = { subnet_ids = ["subnet-12345678", "subnet-87654321"] }
     instance_refresh = {
       enabled = true

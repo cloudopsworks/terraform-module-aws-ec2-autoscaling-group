@@ -8,8 +8,27 @@
 #
 
 locals {
-  is_t_instance_type = replace(var.asg.type, "/^t(2|3|3a|4g){1}\\..*$/", "1") == "1" ? true : false
-  name               = var.name_prefix != "" ? "${var.name_prefix}-${local.system_name}" : var.name
+  name = var.name_prefix != "" ? "${var.name_prefix}-${local.system_name}" : var.name
+
+  # mixed_instances accepts a bool (legacy) or an object; tobool fails on an object,
+  # so try() falls through to the nested form.
+  mixed_instances_enabled   = try(tobool(var.asg.mixed_instances), try(var.asg.mixed_instances.enabled, false))
+  mixed_instances_overrides = try(var.asg.mixed_instances.overrides, var.asg.instance_types, [])
+
+  spot_enabled = try(var.asg.spot.enabled, false)
+  # Spot on the launch template is only legal without a mixed instances policy: AWS rejects an
+  # ASG whose launch template carries InstanceMarketOptions while a mixed instances policy is
+  # attached. Under a mixed policy, Spot is driven by instances_distribution instead.
+  lt_spot_enabled = local.spot_enabled && !local.mixed_instances_enabled
+
+  # spot.enabled together with mixed_instances and no explicit distribution means "all Spot".
+  # price-capacity-optimized is the AWS-recommended strategy; lowest-price is explicitly
+  # discouraged because replacement instances land in pools just as likely to be interrupted.
+  # Defaults are applied per attribute, so setting one key does not drop the others.
+  spot_distribution_input    = try(var.asg.spot.distribution, {})
+  spot_distribution_defaults = local.mixed_instances_enabled && local.spot_enabled
+  spot_distribution_enabled  = local.mixed_instances_enabled && (local.spot_enabled || length(local.spot_distribution_input) > 0)
+
   instance_tags = merge(
     local.all_tags,
     local.backup_tags,
@@ -49,10 +68,11 @@ data "aws_ami" "this" {
 }
 
 resource "aws_launch_template" "this" {
-  count                  = try(var.asg.create, true) ? 1 : 0
-  name                   = "${local.name}-lt"
-  image_id               = try(var.asg.ami.id, length(data.aws_ami.this) > 0 ? data.aws_ami.this[0].id : null)
-  instance_type          = try(var.asg.type, null)
+  count    = try(var.asg.create, true) ? 1 : 0
+  name     = "${local.name}-lt"
+  image_id = try(var.asg.ami.id, length(data.aws_ami.this) > 0 ? data.aws_ami.this[0].id : null)
+  # EC2 rejects a launch template carrying both InstanceType and InstanceRequirements.
+  instance_type          = length(try(var.asg.instance_requirements, {})) > 0 ? null : try(var.asg.type, null)
   key_name               = try(var.asg.key_pair.create, false) ? aws_key_pair.this[0].key_name : null
   update_default_version = true
   ebs_optimized          = try(var.asg.ebs.ebs_optimized, null)
@@ -78,13 +98,13 @@ resource "aws_launch_template" "this" {
     }
   }
   dynamic "instance_market_options" {
-    for_each = try(var.asg.spot.enabled, false) ? [1] : []
+    for_each = local.lt_spot_enabled ? [1] : []
     content {
       market_type = "spot"
       spot_options {
         instance_interruption_behavior = try(var.asg.spot.interruption_behavior, "terminate")
         spot_instance_type             = try(var.asg.spot.instance_type, null)
-        block_duration_minutes         = try(var.asg.spot.block_duration_minutes, null)
+        max_price                      = try(var.asg.spot.max_price, null)
       }
     }
   }
@@ -147,7 +167,7 @@ resource "aws_launch_template" "this" {
     tags          = local.instance_tags
   }
   dynamic "tag_specifications" {
-    for_each = try(var.asg.spot.enabled, false) ? [1] : []
+    for_each = local.spot_enabled ? [1] : []
     content {
       resource_type = "spot-instances-request"
       tags          = local.instance_tags
@@ -157,11 +177,16 @@ resource "aws_launch_template" "this" {
 }
 
 resource "aws_autoscaling_group" "this" {
-  count                     = try(var.asg.create, true) ? 1 : 0
-  name                      = "${local.name}-asg"
-  max_size                  = try(var.asg.max_size, 1)
-  min_size                  = try(var.asg.min_size, 1)
-  desired_capacity          = try(var.asg.desired_capacity, var.asg.desired, 1)
+  count                 = try(var.asg.create, true) ? 1 : 0
+  name                  = "${local.name}-asg"
+  max_size              = try(var.asg.max_size, 1)
+  min_size              = try(var.asg.min_size, 1)
+  desired_capacity      = try(var.asg.desired_capacity, var.asg.desired, 1)
+  desired_capacity_type = try(var.asg.desired_capacity_type, null)
+  # Opt-in: Capacity Rebalancing may temporarily exceed max_size by up to 10% of desired
+  # capacity, and its graceful-drain benefit depends on lifecycle hooks the module does not
+  # yet manage. Left unset unless explicitly requested.
+  capacity_rebalance        = try(var.asg.spot.capacity_rebalance, null)
   health_check_grace_period = try(var.asg.health_check.grace_period, 300)
   health_check_type         = try(var.asg.health_check.type, "ELB")
   force_delete              = try(var.asg.force_delete, false)
@@ -177,25 +202,74 @@ resource "aws_autoscaling_group" "this" {
     }
   }
   dynamic "launch_template" {
-    for_each = try(var.asg.mixed_instances, false) ? [] : [1]
+    for_each = local.mixed_instances_enabled ? [] : [1]
     content {
       id      = aws_launch_template.this[0].id
       version = aws_launch_template.this[0].latest_version
     }
   }
   dynamic "mixed_instances_policy" {
-    for_each = try(var.asg.mixed_instances, false) ? [1] : []
+    for_each = local.mixed_instances_enabled ? [1] : []
     content {
+      dynamic "instances_distribution" {
+        for_each = local.spot_distribution_enabled ? [1] : []
+        content {
+          on_demand_allocation_strategy = try(local.spot_distribution_input.on_demand.allocation_strategy, null)
+          on_demand_base_capacity = try(
+            local.spot_distribution_input.on_demand.base_capacity,
+            local.spot_distribution_defaults ? 0 : null
+          )
+          on_demand_percentage_above_base_capacity = try(
+            local.spot_distribution_input.on_demand.percentage_above_base,
+            local.spot_distribution_defaults ? 0 : null
+          )
+          spot_allocation_strategy = try(
+            local.spot_distribution_input.spot.allocation_strategy,
+            local.spot_distribution_defaults ? "price-capacity-optimized" : null
+          )
+          spot_instance_pools = try(local.spot_distribution_input.spot.instance_pools, null)
+          spot_max_price      = try(local.spot_distribution_input.spot.max_price, null)
+        }
+      }
       launch_template {
         launch_template_specification {
           launch_template_id = aws_launch_template.this[0].id
           version            = aws_launch_template.this[0].latest_version
         }
         dynamic "override" {
-          for_each = try(var.asg.instance_types, [])
+          for_each = local.mixed_instances_overrides
           content {
-            instance_type     = override.value.type
-            weighted_capacity = try(override.value.capacity, "1")
+            instance_type = try(override.value.type, null)
+            # Omitted when unset: AWS treats all instance types as equally weighted by default.
+            weighted_capacity = try(tostring(override.value.capacity), null)
+            dynamic "launch_template_specification" {
+              for_each = try(override.value.launch_template_id, null) != null ? [1] : []
+              content {
+                launch_template_id = override.value.launch_template_id
+                version            = try(override.value.launch_template_version, "$Latest")
+              }
+            }
+            dynamic "instance_requirements" {
+              for_each = length(try(override.value.instance_requirements, {})) > 0 ? [1] : []
+              content {
+                allowed_instance_types  = try(override.value.instance_requirements.allowed_instance_types, null)
+                excluded_instance_types = try(override.value.instance_requirements.excluded_instance_types, null)
+                burstable_performance   = try(override.value.instance_requirements.burstable_performance, null)
+                cpu_manufacturers       = try(override.value.instance_requirements.cpu_manufacturers, null)
+                instance_generations    = try(override.value.instance_requirements.instance_generations, null)
+                max_spot_price_as_percentage_of_optimal_on_demand_price = try(
+                  override.value.instance_requirements.max_spot_price_percentage, null
+                )
+                memory_mib {
+                  min = override.value.instance_requirements.memory_mib.min
+                  max = try(override.value.instance_requirements.memory_mib.max, null)
+                }
+                vcpu_count {
+                  min = override.value.instance_requirements.vcpu_count.min
+                  max = try(override.value.instance_requirements.vcpu_count.max, null)
+                }
+              }
+            }
           }
         }
       }

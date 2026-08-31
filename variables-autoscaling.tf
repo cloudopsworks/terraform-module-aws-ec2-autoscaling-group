@@ -89,11 +89,21 @@ variable "name_prefix" {
 #         delete_on_termination: true  # (Optional) Delete volume on instance termination. Default: true.
 #         no_device: false  # (Optional) Suppress the specified device mapping. Default: false.
 #         virtual_name: ""  # (Optional) For ephemeral devices (rarely used). Default: "".
-#   spot:  # (Optional) Spot instance options on the Launch Template.
-#     enabled: false  # (Optional) Enable Spot market. Default: false.
-#     interruption_behavior: "terminate"  # (Optional) Action on interruption. Default: "terminate". Allowed values: "hibernate", "stop", "terminate".
-#     instance_type: "one-time"  # (Optional) Spot request type. Default: null. Allowed values: "one-time", "persistent".
-#     block_duration_minutes: 60  # (Optional) Fixed hourly block duration (multiples of 60). Default: null. Allowed values: 60, 120, 180, 240, 300, 360.
+#   spot:  # (Optional) All Spot configuration. Works in two modes depending on asg.mixed_instances.enabled.
+#     enabled: false  # (Optional) Enable Spot. Default: false. With mixed_instances.enabled = false this sets Launch Template market options (single instance type). With mixed_instances.enabled = true it drives the ASG mixed instances policy across every override, and no market options are placed on the Launch Template (AWS rejects that combination).
+#     interruption_behavior: "terminate"  # (Optional) Action on interruption; Launch Template mode only. Default: "terminate". Allowed values: "hibernate", "stop", "terminate".
+#     instance_type: "one-time"  # (Optional) Spot request type; Launch Template mode only. Default: null. Allowed values: "one-time", "persistent".
+#     max_price: "0.05"  # (Optional) Maximum hourly price; Launch Template mode only. Default: null (On-Demand price).
+#     capacity_rebalance: false  # (Optional) Proactively replace Spot instances that receive a rebalance recommendation, instead of waiting for the two-minute interruption notice. Default: null (unset). Note: AWS may temporarily exceed asg.max_size by up to 10% of desired capacity while rebalancing, and graceful shutdown depends on lifecycle hooks this module does not yet manage.
+#     distribution:  # (Optional) Mixed instances policy distribution; used only when mixed_instances.enabled = true. When spot.enabled = true and this is omitted, defaults to 100% Spot with the price-capacity-optimized strategy.
+#       on_demand:  # (Optional) On-Demand portion of the fleet.
+#         allocation_strategy: "prioritized"  # (Optional) Default: null. Allowed values: "lowest-price", "prioritized".
+#         base_capacity: 0  # (Optional) Absolute number of On-Demand instances launched before any Spot capacity. Default: 0 when spot.enabled = true.
+#         percentage_above_base: 0  # (Optional) Percentage of capacity above base_capacity fulfilled On-Demand, from 0 through 100. Default: 0 when spot.enabled = true (all Spot).
+#       spot:  # (Optional) Spot portion of the fleet.
+#         allocation_strategy: "price-capacity-optimized"  # (Optional) Default: "price-capacity-optimized" when spot.enabled = true. Allowed values: "lowest-price", "capacity-optimized", "capacity-optimized-prioritized", "price-capacity-optimized". AWS discourages "lowest-price": replacement instances land in pools just as likely to be interrupted.
+#         instance_pools: 2  # (Optional) Number of Spot pools to diversify across. Only valid with the "lowest-price" strategy. Default: null.
+#         max_price: "0.05"  # (Optional) Maximum hourly price. Default: null (On-Demand price).
 #   instance_requirements:  # (Optional) Flexible instance selection instead of a fixed asg.type (Launch Template).
 #     instance_types: ["t3a.micro"]  # (Optional) Allowed instance type names (e.g., t3a.micro).
 #     memory_mib:  # (Optional) Memory requirement in MiB.
@@ -142,10 +152,30 @@ variable "name_prefix" {
 #     grace_period: 300  # (Optional) Seconds to ignore unhealthy checks after launch. Default: 300.
 #   force_delete: false  # (Optional) Force delete the ASG and all instances. Default: false.
 #   availability_zone_distribution: "balanced"  # (Optional) Capacity distribution strategy across AZs. Default: null. Allowed values: "balanced", "prioritized".
-#   mixed_instances: false  # (Optional) Use Mixed Instances Policy with overrides. Default: false.
-#   instance_types:  # (Optional) Overrides; required when mixed_instances = true.
+#   mixed_instances:  # (Optional) Mixed Instances Policy. Also accepts a plain boolean for backwards compatibility, in which case overrides are read from the deprecated asg.instance_types.
+#     enabled: false  # (Optional) Use a Mixed Instances Policy. Default: false. Combine with spot.enabled = true for multi-size Spot.
+#     overrides:  # (Required when enabled) List of instance overrides. Each entry sets exactly one of type or instance_requirements.
+#       - type: "m6i.large"  # (Optional) Explicit instance type for this override. Mutually exclusive with instance_requirements.
+#         capacity: "2"  # (Optional) Weighted capacity in units. Default: null (AWS weights every type equally). Must be set on all overrides or none. Keep the spread between weights narrow, and see asg.desired_capacity_type for automatic vCPU/memory weighting.
+#         launch_template_id: "lt-0123456789abcdef0"  # (Optional) Override Launch Template, for example to pair an arm64 type with a matching AMI. Default: the module-managed Launch Template.
+#         launch_template_version: "$Latest"  # (Optional) Version of the override Launch Template. Default: "$Latest".
+#       - instance_requirements:  # (Optional) Attribute-based instance selection. Mutually exclusive with type. Lets AWS pick every matching instance type, which widens Spot pool diversity and lowers interruption risk.
+#           vcpu_count:  # (Required) vCPU range.
+#             min: 4  # (Required) Minimum vCPUs.
+#             max: 16  # (Optional) Maximum vCPUs. Default: null.
+#           memory_mib:  # (Required) Memory range in MiB.
+#             min: 8192  # (Required) Minimum memory in MiB.
+#             max: 65536  # (Optional) Maximum memory in MiB. Default: null.
+#           allowed_instance_types: ["m6i.*", "m6a.*"]  # (Optional) Restrict selection to these type patterns. Default: null.
+#           excluded_instance_types: ["t*"]  # (Optional) Exclude these type patterns. Default: null.
+#           burstable_performance: "excluded"  # (Optional) Default: null. Allowed values: "included", "excluded", "required".
+#           cpu_manufacturers: ["intel", "amd"]  # (Optional) Default: null. Allowed values: "intel", "amd", "amazon-web-services".
+#           instance_generations: ["current"]  # (Optional) Default: null. Allowed values: "current", "previous".
+#           max_spot_price_percentage: 100  # (Optional) Cap Spot price as a percentage of the optimal On-Demand price. Default: null.
+#   instance_types:  # (Deprecated) Legacy override list, superseded by mixed_instances.overrides. Still honoured when mixed_instances.overrides is unset.
 #     - type: "t3.micro"  # (Required) Instance type for this override.
-#       capacity: "1"  # (Optional) Weighted capacity as string. Default: "1".
+#       capacity: "1"  # (Optional) Weighted capacity as string. Default: null.
+#   desired_capacity_type: "units"  # (Optional) Unit that desired_capacity, min_size, and max_size are expressed in. Default: null ("units"). Allowed values: "units", "vcpu", "memory-mib". AWS recommends pairing "vcpu" or "memory-mib" with instance_requirements overrides so weights are derived automatically instead of hand-maintained.
 #   instance_refresh:  # (Optional) Rolling instance refresh strategy.
 #     enabled: false  # (Optional) Enable instance refresh. Default: false.
 #     strategy: "Rolling"  # (Optional) Refresh strategy. Default: "Rolling". Allowed values: "Rolling".
@@ -294,6 +324,101 @@ variable "asg" {
       || try(contains(["yes", "no"], var.asg.cloudwatch_agent.restart), false)
     )
     error_message = "asg.cloudwatch_agent.restart must be \"yes\" or \"no\" when provided."
+  }
+
+  validation {
+    condition = (
+      length(try(var.asg.instance_requirements, {})) == 0
+      || try(var.asg.type, "") == ""
+    )
+    error_message = "asg.type conflicts with asg.instance_requirements; EC2 rejects a launch template that carries both. Set one or the other."
+  }
+
+  validation {
+    condition = (
+      !try(tobool(var.asg.mixed_instances), try(var.asg.mixed_instances.enabled, false))
+      || length(try(var.asg.mixed_instances.overrides, var.asg.instance_types, [])) > 0
+    )
+    error_message = "asg.mixed_instances.overrides must list at least one override when mixed instances are enabled."
+  }
+
+  validation {
+    condition = alltrue([
+      for o in try(var.asg.mixed_instances.overrides, var.asg.instance_types, []) :
+      (try(o.type, null) != null) != (length(try(o.instance_requirements, {})) > 0)
+    ])
+    error_message = "Each asg.mixed_instances.overrides entry must set exactly one of type or instance_requirements."
+  }
+
+  # AWS: "When you add weights to an existing group, include weights for all instance types
+  # currently in use." A partially weighted override list silently mis-sizes the group.
+  validation {
+    condition = (
+      length([for o in try(var.asg.mixed_instances.overrides, var.asg.instance_types, []) : o if try(o.capacity, null) != null]) == 0
+      || length([for o in try(var.asg.mixed_instances.overrides, var.asg.instance_types, []) : o if try(o.capacity, null) != null])
+      == length(try(var.asg.mixed_instances.overrides, var.asg.instance_types, []))
+    )
+    error_message = "asg.mixed_instances.overrides weights must be set on every override or on none of them."
+  }
+
+  # AWS: "Set your weights and desired capacity so that the desired capacity is at least two
+  # to three times larger than your largest weight."
+  validation {
+    condition = (
+      length([for o in try(var.asg.mixed_instances.overrides, var.asg.instance_types, []) : o if try(o.capacity, null) != null]) == 0
+      || try(var.asg.desired_capacity, var.asg.desired, 1) >= 2 * max([
+        for o in try(var.asg.mixed_instances.overrides, var.asg.instance_types, []) : tonumber(try(o.capacity, 1))
+      ]...)
+    )
+    error_message = "asg.desired_capacity must be at least twice the largest override weight; with weights, desired capacity is expressed in units, not instances."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.spot.distribution.spot.allocation_strategy, null) == null
+      || try(contains(
+        ["lowest-price", "capacity-optimized", "capacity-optimized-prioritized", "price-capacity-optimized"],
+        var.asg.spot.distribution.spot.allocation_strategy
+      ), false)
+    )
+    error_message = "asg.spot.distribution.spot.allocation_strategy must be one of \"lowest-price\", \"capacity-optimized\", \"capacity-optimized-prioritized\", or \"price-capacity-optimized\"."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.spot.distribution.on_demand.allocation_strategy, null) == null
+      || try(contains(["lowest-price", "prioritized"], var.asg.spot.distribution.on_demand.allocation_strategy), false)
+    )
+    error_message = "asg.spot.distribution.on_demand.allocation_strategy must be either \"lowest-price\" or \"prioritized\"."
+  }
+
+  # spot_instance_pools is only honoured by the lowest-price strategy.
+  validation {
+    condition = (
+      try(var.asg.spot.distribution.spot.instance_pools, null) == null
+      || try(var.asg.spot.distribution.spot.allocation_strategy, null) == "lowest-price"
+    )
+    error_message = "asg.spot.distribution.spot.instance_pools is only valid when asg.spot.distribution.spot.allocation_strategy is \"lowest-price\"."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.spot.distribution.on_demand.percentage_above_base, null) == null
+      || try(
+        var.asg.spot.distribution.on_demand.percentage_above_base >= 0
+        && var.asg.spot.distribution.on_demand.percentage_above_base <= 100,
+        false
+      )
+    )
+    error_message = "asg.spot.distribution.on_demand.percentage_above_base must be a value from 0 through 100."
+  }
+
+  validation {
+    condition = (
+      try(var.asg.desired_capacity_type, null) == null
+      || try(contains(["units", "vcpu", "memory-mib"], var.asg.desired_capacity_type), false)
+    )
+    error_message = "asg.desired_capacity_type must be one of \"units\", \"vcpu\", or \"memory-mib\"."
   }
 }
 
