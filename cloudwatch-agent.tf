@@ -100,6 +100,14 @@ resource "aws_ssm_association" "cloudwatch_agent_install" {
     values = local.cloudwatch_agent_target_values
   }
 
+  # SSM ANDs multiple targets, so this scopes the association to this ASG's instances only
+  # (Name tag is propagated from the launch template) even when a user-specified target key/value
+  # matches instances from other ASGs.
+  targets {
+    key    = "tag:Name"
+    values = [local.name]
+  }
+
   depends_on = [
     aws_autoscaling_group.this,
     aws_iam_instance_profile.this,
@@ -129,6 +137,14 @@ resource "aws_ssm_association" "cloudwatch_agent_configure" {
   targets {
     key    = local.cloudwatch_agent_target_key
     values = local.cloudwatch_agent_target_values
+  }
+
+  # SSM ANDs multiple targets, so this scopes the association to this ASG's instances only
+  # (Name tag is propagated from the launch template) even when a user-specified target key/value
+  # matches instances from other ASGs.
+  targets {
+    key    = "tag:Name"
+    values = [local.name]
   }
 
   depends_on = [
