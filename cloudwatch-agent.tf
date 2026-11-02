@@ -26,6 +26,41 @@ locals {
   cloudwatch_agent_custom_configuration        = try(local.cloudwatch_agent_settings.configuration, {})
   cloudwatch_agent_append_default_config       = coalesce(try(tobool(local.cloudwatch_agent_settings.append_default_configuration), null), true)
 
+  # Trace receivers are opt-in and write only the keys the operator sets, so the agent keeps its
+  # own defaults (OTLP 127.0.0.1:4317/4318, X-Ray 127.0.0.1:2000, Application Signals 4315/4316).
+  cloudwatch_agent_traces_settings              = try(local.cloudwatch_agent_settings.traces, {})
+  cloudwatch_agent_application_signals_settings = try(local.cloudwatch_agent_traces_settings.application_signals, {})
+  cloudwatch_agent_xray_settings                = try(local.cloudwatch_agent_traces_settings.xray, {})
+  cloudwatch_agent_otlp_settings                = try(local.cloudwatch_agent_traces_settings.otlp, {})
+  cloudwatch_agent_application_signals_enabled  = local.cloudwatch_agent_enabled && coalesce(try(tobool(local.cloudwatch_agent_application_signals_settings.enabled), null), false)
+  cloudwatch_agent_xray_enabled                 = local.cloudwatch_agent_enabled && coalesce(try(tobool(local.cloudwatch_agent_xray_settings.enabled), null), false)
+  cloudwatch_agent_otlp_enabled                 = local.cloudwatch_agent_enabled && coalesce(try(tobool(local.cloudwatch_agent_otlp_settings.enabled), null), false)
+  cloudwatch_agent_traces_enabled               = local.cloudwatch_agent_application_signals_enabled || local.cloudwatch_agent_xray_enabled || local.cloudwatch_agent_otlp_enabled
+  cloudwatch_agent_xray_receiver = merge(
+    try(tostring(local.cloudwatch_agent_xray_settings.bind_address), null) != null ? { bind_address = tostring(local.cloudwatch_agent_xray_settings.bind_address) } : {},
+    try(tostring(local.cloudwatch_agent_xray_settings.tcp_proxy.bind_address), null) != null ? { tcp_proxy = { bind_address = tostring(local.cloudwatch_agent_xray_settings.tcp_proxy.bind_address) } } : {}
+  )
+  cloudwatch_agent_otlp_receiver = {
+    for key, value in {
+      grpc_endpoint = try(tostring(local.cloudwatch_agent_otlp_settings.grpc_endpoint), null)
+      http_endpoint = try(tostring(local.cloudwatch_agent_otlp_settings.http_endpoint), null)
+    } : key => value if value != null
+  }
+  cloudwatch_agent_traces_collected = merge(concat(
+    local.cloudwatch_agent_application_signals_enabled ? [{ application_signals = {} }] : [],
+    local.cloudwatch_agent_xray_enabled ? [{ xray = local.cloudwatch_agent_xray_receiver }] : [],
+    local.cloudwatch_agent_otlp_enabled ? [{ otlp = local.cloudwatch_agent_otlp_receiver }] : []
+  )...)
+  cloudwatch_agent_traces_options = try(tobool(local.cloudwatch_agent_traces_settings.transit_spans_in_otlp_format), null) != null ? {
+    transit_spans_in_otlp_format = tobool(local.cloudwatch_agent_traces_settings.transit_spans_in_otlp_format)
+  } : {}
+  # Application Signals metrics are emitted as EMF to /aws/application-signals/data; rules and
+  # limiter are the agent's cardinality controls and are passed through only when set.
+  cloudwatch_agent_application_signals_metrics = merge(
+    length(try(local.cloudwatch_agent_application_signals_settings.rules, [])) > 0 ? { rules = local.cloudwatch_agent_application_signals_settings.rules } : {},
+    length(try(local.cloudwatch_agent_application_signals_settings.limiter, {})) > 0 ? { limiter = local.cloudwatch_agent_application_signals_settings.limiter } : {}
+  )
+
   cloudwatch_agent_default_configuration = {
     agent = {
       metrics_collection_interval = coalesce(try(tonumber(local.cloudwatch_agent_settings.metrics_collection_interval), null), 60)
@@ -62,10 +97,113 @@ locals {
     }
   }
 
-  cloudwatch_agent_configuration = merge(concat(
+  cloudwatch_agent_base_configuration = merge(concat(
     local.cloudwatch_agent_append_default_config ? [local.cloudwatch_agent_default_configuration] : [],
     [local.cloudwatch_agent_custom_configuration]
   )...)
+  # The trace settings merge one level deeper than the shallow default/custom merge, so a custom
+  # `logs` or `traces` block (e.g. log file collection) keeps its keys. A receiver that is also
+  # defined in `configuration` keeps the custom definition.
+  cloudwatch_agent_configuration = merge(concat(
+    [local.cloudwatch_agent_base_configuration],
+    local.cloudwatch_agent_traces_enabled ? [{
+      traces = merge(
+        local.cloudwatch_agent_traces_options,
+        try(local.cloudwatch_agent_base_configuration.traces, {}),
+        {
+          traces_collected = merge(
+            local.cloudwatch_agent_traces_collected,
+            try(local.cloudwatch_agent_base_configuration.traces.traces_collected, {})
+          )
+        }
+      )
+    }] : [],
+    local.cloudwatch_agent_application_signals_enabled ? [{
+      logs = merge(
+        try(local.cloudwatch_agent_base_configuration.logs, {}),
+        {
+          metrics_collected = merge(
+            { application_signals = local.cloudwatch_agent_application_signals_metrics },
+            try(local.cloudwatch_agent_base_configuration.logs.metrics_collected, {})
+          )
+        }
+      )
+    }] : []
+  )...)
+
+  # Install and configure run as ordered steps of ONE association. Two separate State Manager
+  # associations are scheduled independently on every instance, so on boot, scale-out, instance
+  # refresh and every scheduled run, AmazonCloudWatch-ManageAgent could start before
+  # AWS-ConfigureAWSPackage had installed the agent. Terraform depends_on only orders the API
+  # calls at apply time, never the executions on the instances.
+  cloudwatch_agent_ssm_enabled = try(var.asg.create, true) && (local.cloudwatch_agent_install_enabled || local.cloudwatch_agent_configure_enabled)
+  cloudwatch_agent_install_parameters = local.cloudwatch_agent_install_enabled ? {
+    installationType = coalesce(try(tostring(local.cloudwatch_agent_settings.installation_type), null), "Uninstall and reinstall")
+    packageName      = coalesce(try(tostring(local.cloudwatch_agent_settings.package_name), null), "AmazonCloudWatchAgent")
+    packageVersion   = coalesce(try(tostring(local.cloudwatch_agent_settings.package_version), null), "latest")
+  } : {}
+  cloudwatch_agent_configure_parameters = local.cloudwatch_agent_configure_enabled ? merge(
+    {
+      configurationLocation = local.cloudwatch_agent_config_parameter_name
+      mode                  = coalesce(try(tostring(local.cloudwatch_agent_settings.mode), null), "ec2")
+      restart               = coalesce(try(tostring(local.cloudwatch_agent_settings.restart), null), "yes")
+    },
+    # Hash of the JSON stored in the module-owned config parameter. The steps never read it; it only
+    # changes the association when the agent configuration changes, which re-runs it on every target.
+    local.cloudwatch_agent_create_config_parameter ? {
+      configurationHash = sha256(jsonencode(local.cloudwatch_agent_configuration))
+    } : {}
+  ) : {}
+  cloudwatch_agent_document_parameter_descriptions = {
+    configurationHash     = "SHA-256 of the agent configuration; changes re-run the association. Not read by the steps."
+    configurationLocation = "SSM parameter that holds the CloudWatch Agent JSON configuration."
+    installationType      = "AWS-ConfigureAWSPackage installation type."
+    mode                  = "AmazonCloudWatch-ManageAgent mode."
+    packageName           = "Package installed by AWS-ConfigureAWSPackage."
+    packageVersion        = "Package version installed by AWS-ConfigureAWSPackage."
+    restart               = "Restart the agent after configuring it (yes or no)."
+  }
+  # Values travel as association parameters, so changing any of them updates the association and
+  # re-runs it on the targets. The document content only changes when a step is toggled.
+  cloudwatch_agent_association_parameters = merge(local.cloudwatch_agent_install_parameters, local.cloudwatch_agent_configure_parameters)
+  cloudwatch_agent_document_steps = concat(
+    local.cloudwatch_agent_install_enabled ? [
+      {
+        action = "aws:runDocument"
+        name   = "installCloudWatchAgent"
+        inputs = tomap({
+          documentType = "SSMDocument"
+          documentPath = "AWS-ConfigureAWSPackage"
+          documentParameters = jsonencode({
+            action           = "Install"
+            installationType = "{{ installationType }}"
+            name             = "{{ packageName }}"
+            version          = "{{ packageVersion }}"
+          })
+          # Stop here when the install fails, so the configure step never runs without the agent.
+          # Requires SSM Agent 3.0.502 or later.
+          onFailure = "exit"
+        })
+      }
+    ] : [],
+    local.cloudwatch_agent_configure_enabled ? [
+      {
+        action = "aws:runDocument"
+        name   = "configureCloudWatchAgent"
+        inputs = tomap({
+          documentType = "SSMDocument"
+          documentPath = "AmazonCloudWatch-ManageAgent"
+          documentParameters = jsonencode({
+            action                        = "configure"
+            mode                          = "{{ mode }}"
+            optionalConfigurationSource   = "ssm"
+            optionalConfigurationLocation = "{{ configurationLocation }}"
+            optionalRestart               = "{{ restart }}"
+          })
+        })
+      }
+    ] : []
+  )
 }
 
 resource "aws_ssm_parameter" "cloudwatch_agent_config" {
@@ -78,17 +216,32 @@ resource "aws_ssm_parameter" "cloudwatch_agent_config" {
   tags        = local.all_tags
 }
 
-resource "aws_ssm_association" "cloudwatch_agent_install" {
-  count = try(var.asg.create, true) && local.cloudwatch_agent_install_enabled ? 1 : 0
+resource "aws_ssm_document" "cloudwatch_agent" {
+  count = local.cloudwatch_agent_ssm_enabled ? 1 : 0
 
-  name             = "AWS-ConfigureAWSPackage"
-  association_name = "${local.name}-cwagent-install"
-  parameters = {
-    action           = "Install"
-    installationType = coalesce(try(tostring(local.cloudwatch_agent_settings.installation_type), null), "Uninstall and reinstall")
-    name             = coalesce(try(tostring(local.cloudwatch_agent_settings.package_name), null), "AmazonCloudWatchAgent")
-    version          = coalesce(try(tostring(local.cloudwatch_agent_settings.package_version), null), "latest")
-  }
+  name            = "${local.name}-cwagent-ssm-doc"
+  document_type   = "Command"
+  document_format = "JSON"
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Install and then configure the CloudWatch Agent for ${local.name}. Steps run in order."
+    parameters = {
+      for key in keys(local.cloudwatch_agent_association_parameters) : key => {
+        type        = "String"
+        description = local.cloudwatch_agent_document_parameter_descriptions[key]
+      }
+    }
+    mainSteps = local.cloudwatch_agent_document_steps
+  })
+  tags = local.all_tags
+}
+
+resource "aws_ssm_association" "cloudwatch_agent" {
+  count = local.cloudwatch_agent_ssm_enabled ? 1 : 0
+
+  name                             = aws_ssm_document.cloudwatch_agent[0].name
+  association_name                 = "${local.name}-cwagent"
+  parameters                       = local.cloudwatch_agent_association_parameters
   max_concurrency                  = try(local.cloudwatch_agent_settings.max_concurrency, null)
   max_errors                       = try(local.cloudwatch_agent_settings.max_errors, null)
   schedule_expression              = try(local.cloudwatch_agent_settings.schedule_expression, null)
@@ -112,44 +265,9 @@ resource "aws_ssm_association" "cloudwatch_agent_install" {
     aws_autoscaling_group.this,
     aws_iam_instance_profile.this,
     aws_iam_role_policy_attachment.this,
-    aws_iam_role_policy_attachment.ssm_managed_instance_core
-  ]
-}
-
-resource "aws_ssm_association" "cloudwatch_agent_configure" {
-  count = try(var.asg.create, true) && local.cloudwatch_agent_configure_enabled ? 1 : 0
-
-  name             = "AmazonCloudWatch-ManageAgent"
-  association_name = "${local.name}-cwagent-configure"
-  parameters = {
-    action                        = "configure"
-    mode                          = coalesce(try(tostring(local.cloudwatch_agent_settings.mode), null), "ec2")
-    optionalConfigurationSource   = "ssm"
-    optionalConfigurationLocation = local.cloudwatch_agent_config_parameter_name
-    optionalRestart               = coalesce(try(tostring(local.cloudwatch_agent_settings.restart), null), "yes")
-  }
-  max_concurrency                  = try(local.cloudwatch_agent_settings.max_concurrency, null)
-  max_errors                       = try(local.cloudwatch_agent_settings.max_errors, null)
-  schedule_expression              = try(local.cloudwatch_agent_settings.schedule_expression, null)
-  wait_for_success_timeout_seconds = try(local.cloudwatch_agent_settings.wait_for_success_timeout_seconds, null)
-  tags                             = local.all_tags
-
-  targets {
-    key    = local.cloudwatch_agent_target_key
-    values = local.cloudwatch_agent_target_values
-  }
-
-  # SSM ANDs multiple targets, so this scopes the association to this ASG's instances only
-  # (Name tag is propagated from the launch template) even when a user-specified target key/value
-  # matches instances from other ASGs.
-  targets {
-    key    = "tag:Name"
-    values = [local.name]
-  }
-
-  depends_on = [
+    aws_iam_role_policy_attachment.ssm_managed_instance_core,
     aws_iam_role_policy.cloudwatch_agent_parameter,
-    aws_ssm_association.cloudwatch_agent_install,
+    aws_iam_role_policy.cloudwatch_agent_traces,
     aws_ssm_parameter.cloudwatch_agent_config
   ]
 }

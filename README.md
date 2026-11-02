@@ -3,8 +3,7 @@
   ** 
   ** This file was automatically generated. 
   ** 1) Make all changes to `README.yaml` 
-  ** 2) Run `make init` (you only need to do this once)
-  ** 3) Run`make readme` to rebuild this file. 
+  ** 2) Run `tronador readme build` to rebuild this file.
   -->
 [![README Header][readme_header_img]][readme_header_link]
 
@@ -28,6 +27,7 @@ It supports:
 - IMDSv2 enforcement with optional IPv6 metadata endpoint.
 - Launch Template tag specifications for instances, EBS volumes, network interfaces, and Spot instance requests.
 - Optional CloudWatch Agent installation/configuration through Systems Manager, with tags for CloudWatch workload detection and tag-based deployment.
+- Optional CloudWatch Agent trace receivers for CloudWatch Application Signals, OpenTelemetry (OTLP) and X-Ray, with the matching IAM permissions.
 - Detailed configuration through a single `asg` input object.
 
 
@@ -131,10 +131,10 @@ asg:
 
   # cloudwatch_agent:
   #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
-  #   install: true # (Optional) Create AWS-ConfigureAWSPackage association to install AmazonCloudWatchAgent. Default: true.
-  #   configure: true # (Optional) Create AmazonCloudWatch-ManageAgent association to configure and start the agent. Default: true.
+  #   install: true # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
+  #   configure: true # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
   #   attach_managed_policies: true # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
-  #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+  #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. A change to the stored configuration re-runs the agent association on every target. Default: true.
   #   config_parameter_name: "AmazonCloudWatch-my-asg-config" # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-<name>-config".
   #   append_default_configuration: true # (Optional) Shallow-merge custom configuration with the default memory/disk metric profile. Default: true.
   #   namespace: "CWAgent" # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
@@ -153,6 +153,21 @@ asg:
   #   max_concurrency: "10%" # (Optional) Maximum concurrent association executions. Default: AWS default.
   #   max_errors: "1" # (Optional) Maximum failed association executions. Default: AWS default.
   #   wait_for_success_timeout_seconds: null # (Optional) Seconds Terraform waits for association success. Default: provider default.
+  #   traces: # (Optional) Trace receivers added to the agent configuration. All are opt-in; only the keys you set are written, so the agent defaults apply. Any enabled receiver also adds the CloudWatchAgentTracesPolicy inline policy (X-Ray write and sampling) when iam.create=true.
+  #     application_signals:
+  #       enabled: false # (Optional) CloudWatch Application Signals: receive ADOT/OpenTelemetry traces and metrics on OTLP 127.0.0.1:4316 (HTTP) and 4315 (gRPC); spans go to X-Ray and metrics go as EMF to /aws/application-signals/data. Requires CloudWatch Agent 1.300040.0+ and Application Signals enabled once per account and Region. Default: false.
+  #       rules: [] # (Optional) Cardinality rules for logs.metrics_collected.application_signals.rules. Each item supports rule_name, selectors [{dimension, match}], action ("keep", "drop", "replace") and replacements [{target_dimension, value}] (required for "replace"). Default: [].
+  #       limiter: {} # (Optional) Metric limiter: disabled (bool), drop_threshold (number, agent default 500), rotation_interval (for example "1h"), log_dropped_metrics (bool). Default: {} (agent defaults).
+  #     otlp:
+  #       enabled: false # (Optional) Generic OpenTelemetry trace receiver that forwards spans to AWS X-Ray. Default: false.
+  #       grpc_endpoint: "127.0.0.1:4317" # (Optional) OTLP gRPC listen address in ip:port format. Default: agent default "127.0.0.1:4317".
+  #       http_endpoint: "127.0.0.1:4318" # (Optional) OTLP HTTP listen address in ip:port format. Default: agent default "127.0.0.1:4318".
+  #     xray:
+  #       enabled: false # (Optional) X-Ray SDK/daemon-compatible receiver: segments over UDP, remote sampling over TCP; forwards to AWS X-Ray. Default: false.
+  #       bind_address: "127.0.0.1:2000" # (Optional) UDP listen address in ip:port format. Default: agent default "127.0.0.1:2000".
+  #       tcp_proxy:
+  #         bind_address: "127.0.0.1:2000" # (Optional) TCP sampling proxy listen address in ip:port format. Default: agent default "127.0.0.1:2000". Must use a port other than 2000 when application_signals is also enabled, because Application Signals already serves the sampling proxy on TCP 0.0.0.0:2000.
+  #     transit_spans_in_otlp_format: false # (Optional) Send spans to X-Ray in OTLP format, which keeps span events in Transaction Search. Default: agent default (false).
   #   workload_detection:
   #     enabled: false # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
   #     tag_key: "CloudWatchAgent" # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
@@ -287,6 +302,31 @@ Note: AWS CloudWatch workload detection is an opt-in CloudWatch console setting.
 This module installs/configures the agent through SSM and applies the EC2 tags
 used by CloudWatch tag-based deployment for current and future matching instances.
 
+The agent install and configure actions run as ordered steps of a single
+module-owned SSM Command document (`<name>-cwagent-ssm-doc`) bound to one
+State Manager association (`<name>-cwagent`). On every instance, including
+ones launched by scale-out or instance refresh, the configure step only runs
+after the install step succeeds. The `onFailure` step control this relies on
+requires SSM Agent 3.0.502 or later.
+
+Traces and Application Signals are opt-in through `asg.cloudwatch_agent.traces`;
+nothing is pre-configured. Before enabling `application_signals`:
+
+| Prerequisite | Owner | Notes |
+|---|---|---|
+| Application Signals enabled in the account and Region | Account setup (once per Region) | CloudWatch console, Application Signals, "Start discovering your services", or `aws application-signals start-discovery`. Not managed by this module. |
+| CloudWatch Agent 1.300040.0 or later | This module | `package_version: "latest"` (default) satisfies it. |
+| ADOT instrumentation in the application | Application | Set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces`, `OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT=http://localhost:4316/v1/metrics`, `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true`, `OTEL_METRICS_EXPORTER=none` and `service.name` in `OTEL_RESOURCE_ATTRIBUTES`. |
+| X-Ray write and sampling permissions | This module | `CloudWatchAgentTracesPolicy` inline policy when `iam.create=true` (also covered by `CloudWatchAgentServerPolicy`). |
+
+The agent configuration is stored in the SSM parameter, and its SHA-256 is
+passed to the association as `configurationHash`. Any configuration change,
+including `traces`, updates the association, which re-runs install and
+configure on every target (paced by `max_concurrency`) and restarts the agent.
+This only applies when the module creates the parameter
+(`create_config_parameter: true`); an externally managed parameter is picked up
+on the next scheduled run or when instances are replaced.
+
 ## Quick Start
 
 1. Ensure you have AWS credentials configured.
@@ -368,6 +408,53 @@ inputs = {
   iam = {
     create      = true # CloudWatchAgentServerPolicy is attached when the agent is enabled.
     ssm_enabled = true # AmazonSSMManagedInstanceCore is attached once by default for SSM access.
+  }
+}
+```
+
+### CloudWatch Application Signals with OpenTelemetry Example
+
+Typical OpenTelemetry setup: ADOT-instrumented services send traces and
+Application Signals metrics to the local agent, and other OpenTelemetry SDKs
+use the generic OTLP receiver. Every receiver must be enabled explicitly.
+
+```hcl
+terraform {
+  source = "git::https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group.git//?ref=vX.Y.Z"
+}
+
+inputs = {
+  org = {
+    organization_name = "acme"
+    organization_unit = "platform"
+    environment_type  = "prod"
+    environment_name  = "observability"
+  }
+  name = "traced-api"
+  asg = {
+    type = "t3.small"
+    ami = {
+      owners      = ["amazon"]
+      name        = "al2023-ami-2023.*-x86_64"
+      most_recent = true
+    }
+    vpc = { subnet_ids = ["subnet-12345678", "subnet-87654321"] }
+
+    cloudwatch_agent = {
+      enabled = true
+      traces = {
+        application_signals = {
+          enabled = true
+          limiter = { drop_threshold = 500 }
+        }
+        otlp = {
+          enabled = true # Agent defaults: gRPC 127.0.0.1:4317, HTTP 127.0.0.1:4318.
+        }
+      }
+    }
+  }
+  iam = {
+    create = true # Adds CloudWatchAgentTracesPolicy (X-Ray + /aws/application-signals/data).
   }
 }
 ```
@@ -511,6 +598,7 @@ Available targets:
 | [aws_iam_role.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.cloudwatch_agent_parameter](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.cloudwatch_agent_traces](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.udpate_asg_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
@@ -527,8 +615,8 @@ Available targets:
 | [aws_secretsmanager_secret_version.instance_public_key](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret_version) | resource |
 | [aws_security_group.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
 | [aws_security_group_rule.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group_rule) | resource |
-| [aws_ssm_association.cloudwatch_agent_configure](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
-| [aws_ssm_association.cloudwatch_agent_install](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
+| [aws_ssm_association.cloudwatch_agent](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
+| [aws_ssm_document.cloudwatch_agent](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_document) | resource |
 | [aws_ssm_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_document) | resource |
 | [aws_ssm_parameter.cloudwatch_agent_config](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_parameter) | resource |
 | [tls_private_key.this](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
@@ -537,6 +625,7 @@ Available targets:
 | [aws_cloudwatch_event_bus.default](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/cloudwatch_event_bus) | data source |
 | [aws_iam_policy_document.assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.cloudwatch_agent_parameter](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.cloudwatch_agent_traces](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
@@ -568,7 +657,7 @@ Available targets:
 | ---- | ----------- |
 | <a name="output_autoscaling_group_arn"></a> [autoscaling\_group\_arn](#output\_autoscaling\_group\_arn) | ARN of the Auto Scaling Group when asg.create is true. |
 | <a name="output_autoscaling_group_id"></a> [autoscaling\_group\_id](#output\_autoscaling\_group\_id) | ID of the Auto Scaling Group when asg.create is true. |
-| <a name="output_cloudwatch_agent"></a> [cloudwatch\_agent](#output\_cloudwatch\_agent) | CloudWatch Agent SSM associations, configuration parameter, managed policies, and ASG target tags. |
+| <a name="output_cloudwatch_agent"></a> [cloudwatch\_agent](#output\_cloudwatch\_agent) | CloudWatch Agent SSM document and association, configuration parameter, managed and inline policies, trace settings, and ASG target tags. |
 | <a name="output_iam_role"></a> [iam\_role](#output\_iam\_role) | Created IAM instance profile, role name, and role ARN when iam.create is true. |
 | <a name="output_key_pair_name"></a> [key\_pair\_name](#output\_key\_pair\_name) | Name of the generated AWS key pair when asg.key\_pair.create is true. |
 | <a name="output_key_pair_public_key"></a> [key\_pair\_public\_key](#output\_key\_pair\_public\_key) | Generated OpenSSH public key material when asg.key\_pair.create is true. |

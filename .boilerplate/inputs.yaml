@@ -30,10 +30,10 @@ asg:
 
   # cloudwatch_agent:
   #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
-  #   install: true # (Optional) Create AWS-ConfigureAWSPackage association to install AmazonCloudWatchAgent. Default: true.
-  #   configure: true # (Optional) Create AmazonCloudWatch-ManageAgent association to configure and start the agent. Default: true.
+  #   install: true # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
+  #   configure: true # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
   #   attach_managed_policies: true # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
-  #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+  #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. A change to the stored configuration re-runs the agent association on every target. Default: true.
   #   config_parameter_name: "AmazonCloudWatch-my-asg-config" # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-<name>-config".
   #   append_default_configuration: true # (Optional) Shallow-merge custom configuration with the default memory/disk metric profile. Default: true.
   #   namespace: "CWAgent" # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
@@ -52,6 +52,21 @@ asg:
   #   max_concurrency: "10%" # (Optional) Maximum concurrent association executions. Default: AWS default.
   #   max_errors: "1" # (Optional) Maximum failed association executions. Default: AWS default.
   #   wait_for_success_timeout_seconds: null # (Optional) Seconds Terraform waits for association success. Default: provider default.
+  #   traces: # (Optional) Trace receivers added to the agent configuration. All are opt-in; only the keys you set are written, so the agent defaults apply. Any enabled receiver also adds the CloudWatchAgentTracesPolicy inline policy (X-Ray write and sampling) when iam.create=true.
+  #     application_signals:
+  #       enabled: false # (Optional) CloudWatch Application Signals: receive ADOT/OpenTelemetry traces and metrics on OTLP 127.0.0.1:4316 (HTTP) and 4315 (gRPC); spans go to X-Ray and metrics go as EMF to /aws/application-signals/data. Requires CloudWatch Agent 1.300040.0+ and Application Signals enabled once per account and Region. Default: false.
+  #       rules: [] # (Optional) Cardinality rules for logs.metrics_collected.application_signals.rules. Each item supports rule_name, selectors [{dimension, match}], action ("keep", "drop", "replace") and replacements [{target_dimension, value}] (required for "replace"). Default: [].
+  #       limiter: {} # (Optional) Metric limiter: disabled (bool), drop_threshold (number, agent default 500), rotation_interval (for example "1h"), log_dropped_metrics (bool). Default: {} (agent defaults).
+  #     otlp:
+  #       enabled: false # (Optional) Generic OpenTelemetry trace receiver that forwards spans to AWS X-Ray. Default: false.
+  #       grpc_endpoint: "127.0.0.1:4317" # (Optional) OTLP gRPC listen address in ip:port format. Default: agent default "127.0.0.1:4317".
+  #       http_endpoint: "127.0.0.1:4318" # (Optional) OTLP HTTP listen address in ip:port format. Default: agent default "127.0.0.1:4318".
+  #     xray:
+  #       enabled: false # (Optional) X-Ray SDK/daemon-compatible receiver: segments over UDP, remote sampling over TCP; forwards to AWS X-Ray. Default: false.
+  #       bind_address: "127.0.0.1:2000" # (Optional) UDP listen address in ip:port format. Default: agent default "127.0.0.1:2000".
+  #       tcp_proxy:
+  #         bind_address: "127.0.0.1:2000" # (Optional) TCP sampling proxy listen address in ip:port format. Default: agent default "127.0.0.1:2000". Must use a port other than 2000 when application_signals is also enabled, because Application Signals already serves the sampling proxy on TCP 0.0.0.0:2000.
+  #     transit_spans_in_otlp_format: false # (Optional) Send spans to X-Ray in OTLP format, which keeps span events in Transaction Search. Default: agent default (false).
   #   workload_detection:
   #     enabled: false # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
   #     tag_key: "CloudWatchAgent" # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
