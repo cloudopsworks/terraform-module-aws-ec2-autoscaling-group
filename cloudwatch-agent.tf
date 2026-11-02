@@ -142,11 +142,27 @@ locals {
     packageName      = coalesce(try(tostring(local.cloudwatch_agent_settings.package_name), null), "AmazonCloudWatchAgent")
     packageVersion   = coalesce(try(tostring(local.cloudwatch_agent_settings.package_version), null), "latest")
   } : {}
-  cloudwatch_agent_configure_parameters = local.cloudwatch_agent_configure_enabled ? {
-    configurationLocation = local.cloudwatch_agent_config_parameter_name
-    mode                  = coalesce(try(tostring(local.cloudwatch_agent_settings.mode), null), "ec2")
-    restart               = coalesce(try(tostring(local.cloudwatch_agent_settings.restart), null), "yes")
-  } : {}
+  cloudwatch_agent_configure_parameters = local.cloudwatch_agent_configure_enabled ? merge(
+    {
+      configurationLocation = local.cloudwatch_agent_config_parameter_name
+      mode                  = coalesce(try(tostring(local.cloudwatch_agent_settings.mode), null), "ec2")
+      restart               = coalesce(try(tostring(local.cloudwatch_agent_settings.restart), null), "yes")
+    },
+    # Hash of the JSON stored in the module-owned config parameter. The steps never read it; it only
+    # changes the association when the agent configuration changes, which re-runs it on every target.
+    local.cloudwatch_agent_create_config_parameter ? {
+      configurationHash = sha256(jsonencode(local.cloudwatch_agent_configuration))
+    } : {}
+  ) : {}
+  cloudwatch_agent_document_parameter_descriptions = {
+    configurationHash     = "SHA-256 of the agent configuration; changes re-run the association. Not read by the steps."
+    configurationLocation = "SSM parameter that holds the CloudWatch Agent JSON configuration."
+    installationType      = "AWS-ConfigureAWSPackage installation type."
+    mode                  = "AmazonCloudWatch-ManageAgent mode."
+    packageName           = "Package installed by AWS-ConfigureAWSPackage."
+    packageVersion        = "Package version installed by AWS-ConfigureAWSPackage."
+    restart               = "Restart the agent after configuring it (yes or no)."
+  }
   # Values travel as association parameters, so changing any of them updates the association and
   # re-runs it on the targets. The document content only changes when a step is toggled.
   cloudwatch_agent_association_parameters = merge(local.cloudwatch_agent_install_parameters, local.cloudwatch_agent_configure_parameters)
@@ -211,7 +227,8 @@ resource "aws_ssm_document" "cloudwatch_agent" {
     description   = "Install and then configure the CloudWatch Agent for ${local.name}. Steps run in order."
     parameters = {
       for key in keys(local.cloudwatch_agent_association_parameters) : key => {
-        type = "String"
+        type        = "String"
+        description = local.cloudwatch_agent_document_parameter_descriptions[key]
       }
     }
     mainSteps = local.cloudwatch_agent_document_steps

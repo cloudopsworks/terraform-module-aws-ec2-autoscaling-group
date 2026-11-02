@@ -52,7 +52,7 @@ variable "name_prefix" {
 #     enabled: false  # (Optional) Enable CloudWatch Agent integration. Default: false.
 #     install: true  # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
 #     configure: true  # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
-#     create_config_parameter: true  # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+#     create_config_parameter: true  # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. A change to the stored configuration re-runs the agent association on every target. Default: true.
 #     config_parameter_name: "AmazonCloudWatch-my-asg-config"  # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-${local.name}-config".
 #     append_default_configuration: true  # (Optional) Shallow-merge configuration with the default memory/disk metric collection profile. Default: true.
 #     namespace: "CWAgent"  # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".

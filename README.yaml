@@ -100,7 +100,7 @@ usage: |-
     #   install: true # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
     #   configure: true # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
     #   attach_managed_policies: true # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
-    #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
+    #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. A change to the stored configuration re-runs the agent association on every target. Default: true.
     #   config_parameter_name: "AmazonCloudWatch-my-asg-config" # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-<name>-config".
     #   append_default_configuration: true # (Optional) Shallow-merge custom configuration with the default memory/disk metric profile. Default: true.
     #   namespace: "CWAgent" # (Optional) CloudWatch namespace used by the default configuration. Default: "CWAgent".
@@ -285,9 +285,13 @@ usage: |-
   | ADOT instrumentation in the application | Application | Set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces`, `OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT=http://localhost:4316/v1/metrics`, `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true`, `OTEL_METRICS_EXPORTER=none` and `service.name` in `OTEL_RESOURCE_ATTRIBUTES`. |
   | X-Ray write and sampling permissions | This module | `CloudWatchAgentTracesPolicy` inline policy when `iam.create=true` (also covered by `CloudWatchAgentServerPolicy`). |
 
-  The agent configuration is pushed through the SSM parameter. Instances that
-  are already running pick up a changed `traces` setting on the next scheduled
-  association run or when they are replaced (for example by an instance refresh).
+  The agent configuration is stored in the SSM parameter, and its SHA-256 is
+  passed to the association as `configurationHash`. Any configuration change,
+  including `traces`, updates the association, which re-runs install and
+  configure on every target (paced by `max_concurrency`) and restarts the agent.
+  This only applies when the module creates the parameter
+  (`create_config_parameter: true`); an externally managed parameter is picked up
+  on the next scheduled run or when instances are replaced.
 
 # Example Usage
 examples: |-
