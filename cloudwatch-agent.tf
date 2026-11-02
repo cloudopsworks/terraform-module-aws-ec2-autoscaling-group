@@ -26,6 +26,41 @@ locals {
   cloudwatch_agent_custom_configuration        = try(local.cloudwatch_agent_settings.configuration, {})
   cloudwatch_agent_append_default_config       = coalesce(try(tobool(local.cloudwatch_agent_settings.append_default_configuration), null), true)
 
+  # Trace receivers are opt-in and write only the keys the operator sets, so the agent keeps its
+  # own defaults (OTLP 127.0.0.1:4317/4318, X-Ray 127.0.0.1:2000, Application Signals 4315/4316).
+  cloudwatch_agent_traces_settings              = try(local.cloudwatch_agent_settings.traces, {})
+  cloudwatch_agent_application_signals_settings = try(local.cloudwatch_agent_traces_settings.application_signals, {})
+  cloudwatch_agent_xray_settings                = try(local.cloudwatch_agent_traces_settings.xray, {})
+  cloudwatch_agent_otlp_settings                = try(local.cloudwatch_agent_traces_settings.otlp, {})
+  cloudwatch_agent_application_signals_enabled  = local.cloudwatch_agent_enabled && coalesce(try(tobool(local.cloudwatch_agent_application_signals_settings.enabled), null), false)
+  cloudwatch_agent_xray_enabled                 = local.cloudwatch_agent_enabled && coalesce(try(tobool(local.cloudwatch_agent_xray_settings.enabled), null), false)
+  cloudwatch_agent_otlp_enabled                 = local.cloudwatch_agent_enabled && coalesce(try(tobool(local.cloudwatch_agent_otlp_settings.enabled), null), false)
+  cloudwatch_agent_traces_enabled               = local.cloudwatch_agent_application_signals_enabled || local.cloudwatch_agent_xray_enabled || local.cloudwatch_agent_otlp_enabled
+  cloudwatch_agent_xray_receiver = merge(
+    try(tostring(local.cloudwatch_agent_xray_settings.bind_address), null) != null ? { bind_address = tostring(local.cloudwatch_agent_xray_settings.bind_address) } : {},
+    try(tostring(local.cloudwatch_agent_xray_settings.tcp_proxy.bind_address), null) != null ? { tcp_proxy = { bind_address = tostring(local.cloudwatch_agent_xray_settings.tcp_proxy.bind_address) } } : {}
+  )
+  cloudwatch_agent_otlp_receiver = {
+    for key, value in {
+      grpc_endpoint = try(tostring(local.cloudwatch_agent_otlp_settings.grpc_endpoint), null)
+      http_endpoint = try(tostring(local.cloudwatch_agent_otlp_settings.http_endpoint), null)
+    } : key => value if value != null
+  }
+  cloudwatch_agent_traces_collected = merge(concat(
+    local.cloudwatch_agent_application_signals_enabled ? [{ application_signals = {} }] : [],
+    local.cloudwatch_agent_xray_enabled ? [{ xray = local.cloudwatch_agent_xray_receiver }] : [],
+    local.cloudwatch_agent_otlp_enabled ? [{ otlp = local.cloudwatch_agent_otlp_receiver }] : []
+  )...)
+  cloudwatch_agent_traces_options = try(tobool(local.cloudwatch_agent_traces_settings.transit_spans_in_otlp_format), null) != null ? {
+    transit_spans_in_otlp_format = tobool(local.cloudwatch_agent_traces_settings.transit_spans_in_otlp_format)
+  } : {}
+  # Application Signals metrics are emitted as EMF to /aws/application-signals/data; rules and
+  # limiter are the agent's cardinality controls and are passed through only when set.
+  cloudwatch_agent_application_signals_metrics = merge(
+    length(try(local.cloudwatch_agent_application_signals_settings.rules, [])) > 0 ? { rules = local.cloudwatch_agent_application_signals_settings.rules } : {},
+    length(try(local.cloudwatch_agent_application_signals_settings.limiter, {})) > 0 ? { limiter = local.cloudwatch_agent_application_signals_settings.limiter } : {}
+  )
+
   cloudwatch_agent_default_configuration = {
     agent = {
       metrics_collection_interval = coalesce(try(tonumber(local.cloudwatch_agent_settings.metrics_collection_interval), null), 60)
@@ -62,9 +97,38 @@ locals {
     }
   }
 
-  cloudwatch_agent_configuration = merge(concat(
+  cloudwatch_agent_base_configuration = merge(concat(
     local.cloudwatch_agent_append_default_config ? [local.cloudwatch_agent_default_configuration] : [],
     [local.cloudwatch_agent_custom_configuration]
+  )...)
+  # The trace settings merge one level deeper than the shallow default/custom merge, so a custom
+  # `logs` or `traces` block (e.g. log file collection) keeps its keys. A receiver that is also
+  # defined in `configuration` keeps the custom definition.
+  cloudwatch_agent_configuration = merge(concat(
+    [local.cloudwatch_agent_base_configuration],
+    local.cloudwatch_agent_traces_enabled ? [{
+      traces = merge(
+        local.cloudwatch_agent_traces_options,
+        try(local.cloudwatch_agent_base_configuration.traces, {}),
+        {
+          traces_collected = merge(
+            local.cloudwatch_agent_traces_collected,
+            try(local.cloudwatch_agent_base_configuration.traces.traces_collected, {})
+          )
+        }
+      )
+    }] : [],
+    local.cloudwatch_agent_application_signals_enabled ? [{
+      logs = merge(
+        try(local.cloudwatch_agent_base_configuration.logs, {}),
+        {
+          metrics_collected = merge(
+            { application_signals = local.cloudwatch_agent_application_signals_metrics },
+            try(local.cloudwatch_agent_base_configuration.logs.metrics_collected, {})
+          )
+        }
+      )
+    }] : []
   )...)
 
   # Install and configure run as ordered steps of ONE association. Two separate State Manager
@@ -186,6 +250,7 @@ resource "aws_ssm_association" "cloudwatch_agent" {
     aws_iam_role_policy_attachment.this,
     aws_iam_role_policy_attachment.ssm_managed_instance_core,
     aws_iam_role_policy.cloudwatch_agent_parameter,
+    aws_iam_role_policy.cloudwatch_agent_traces,
     aws_ssm_parameter.cloudwatch_agent_config
   ]
 }

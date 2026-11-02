@@ -304,7 +304,8 @@ resource "aws_autoscaling_group" "this" {
   depends_on = [
     aws_iam_role_policy_attachment.this,
     aws_iam_role_policy_attachment.ssm_managed_instance_core,
-    aws_iam_role_policy.cloudwatch_agent_parameter
+    aws_iam_role_policy.cloudwatch_agent_parameter,
+    aws_iam_role_policy.cloudwatch_agent_traces
   ]
 }
 

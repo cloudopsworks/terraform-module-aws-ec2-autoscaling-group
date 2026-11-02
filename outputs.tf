@@ -65,7 +65,7 @@ output "security_group_name" {
 }
 
 output "cloudwatch_agent" {
-  description = "CloudWatch Agent SSM document and association, configuration parameter, managed policies, and ASG target tags."
+  description = "CloudWatch Agent SSM document and association, configuration parameter, managed and inline policies, trace settings, and ASG target tags."
   value = {
     enabled                         = local.cloudwatch_agent_enabled
     association_id                  = try(aws_ssm_association.cloudwatch_agent[0].association_id, "")
@@ -80,5 +80,7 @@ output "cloudwatch_agent" {
     ssm_association_target_key      = local.cloudwatch_agent_target_key
     ssm_association_target_values   = local.cloudwatch_agent_target_values
     configure_parameter_policy_name = try(aws_iam_role_policy.cloudwatch_agent_parameter[0].name, "")
+    application_signals_enabled     = local.cloudwatch_agent_application_signals_enabled
+    traces_policy_name              = try(aws_iam_role_policy.cloudwatch_agent_traces[0].name, "")
   }
 }

@@ -24,6 +24,7 @@ description: |-
   - IMDSv2 enforcement with optional IPv6 metadata endpoint.
   - Launch Template tag specifications for instances, EBS volumes, network interfaces, and Spot instance requests.
   - Optional CloudWatch Agent installation/configuration through Systems Manager, with tags for CloudWatch workload detection and tag-based deployment.
+  - Optional CloudWatch Agent trace receivers for CloudWatch Application Signals, OpenTelemetry (OTLP) and X-Ray, with the matching IAM permissions.
   - Detailed configuration through a single `asg` input object.
 
 # Introduction to the project
@@ -118,6 +119,21 @@ usage: |-
     #   max_concurrency: "10%" # (Optional) Maximum concurrent association executions. Default: AWS default.
     #   max_errors: "1" # (Optional) Maximum failed association executions. Default: AWS default.
     #   wait_for_success_timeout_seconds: null # (Optional) Seconds Terraform waits for association success. Default: provider default.
+    #   traces: # (Optional) Trace receivers added to the agent configuration. All are opt-in; only the keys you set are written, so the agent defaults apply. Any enabled receiver also adds the CloudWatchAgentTracesPolicy inline policy (X-Ray write and sampling) when iam.create=true.
+    #     application_signals:
+    #       enabled: false # (Optional) CloudWatch Application Signals: receive ADOT/OpenTelemetry traces and metrics on OTLP 127.0.0.1:4316 (HTTP) and 4315 (gRPC); spans go to X-Ray and metrics go as EMF to /aws/application-signals/data. Requires CloudWatch Agent 1.300040.0+ and Application Signals enabled once per account and Region. Default: false.
+    #       rules: [] # (Optional) Cardinality rules for logs.metrics_collected.application_signals.rules. Each item supports rule_name, selectors [{dimension, match}], action ("keep", "drop", "replace") and replacements [{target_dimension, value}] (required for "replace"). Default: [].
+    #       limiter: {} # (Optional) Metric limiter: disabled (bool), drop_threshold (number, agent default 500), rotation_interval (for example "1h"), log_dropped_metrics (bool). Default: {} (agent defaults).
+    #     otlp:
+    #       enabled: false # (Optional) Generic OpenTelemetry trace receiver that forwards spans to AWS X-Ray. Default: false.
+    #       grpc_endpoint: "127.0.0.1:4317" # (Optional) OTLP gRPC listen address in ip:port format. Default: agent default "127.0.0.1:4317".
+    #       http_endpoint: "127.0.0.1:4318" # (Optional) OTLP HTTP listen address in ip:port format. Default: agent default "127.0.0.1:4318".
+    #     xray:
+    #       enabled: false # (Optional) X-Ray SDK/daemon-compatible receiver: segments over UDP, remote sampling over TCP; forwards to AWS X-Ray. Default: false.
+    #       bind_address: "127.0.0.1:2000" # (Optional) UDP listen address in ip:port format. Default: agent default "127.0.0.1:2000".
+    #       tcp_proxy:
+    #         bind_address: "127.0.0.1:2000" # (Optional) TCP sampling proxy listen address in ip:port format. Default: agent default "127.0.0.1:2000". Must use a port other than 2000 when application_signals is also enabled, because Application Signals already serves the sampling proxy on TCP 0.0.0.0:2000.
+    #     transit_spans_in_otlp_format: false # (Optional) Send spans to X-Ray in OTLP format, which keeps span events in Transaction Search. Default: agent default (false).
     #   workload_detection:
     #     enabled: false # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
     #     tag_key: "CloudWatchAgent" # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
@@ -259,6 +275,20 @@ usage: |-
   after the install step succeeds. The `onFailure` step control this relies on
   requires SSM Agent 3.0.502 or later.
 
+  Traces and Application Signals are opt-in through `asg.cloudwatch_agent.traces`;
+  nothing is pre-configured. Before enabling `application_signals`:
+
+  | Prerequisite | Owner | Notes |
+  |---|---|---|
+  | Application Signals enabled in the account and Region | Account setup (once per Region) | CloudWatch console, Application Signals, "Start discovering your services", or `aws application-signals start-discovery`. Not managed by this module. |
+  | CloudWatch Agent 1.300040.0 or later | This module | `package_version: "latest"` (default) satisfies it. |
+  | ADOT instrumentation in the application | Application | Set `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:4316/v1/traces`, `OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT=http://localhost:4316/v1/metrics`, `OTEL_AWS_APPLICATION_SIGNALS_ENABLED=true`, `OTEL_METRICS_EXPORTER=none` and `service.name` in `OTEL_RESOURCE_ATTRIBUTES`. |
+  | X-Ray write and sampling permissions | This module | `CloudWatchAgentTracesPolicy` inline policy when `iam.create=true` (also covered by `CloudWatchAgentServerPolicy`). |
+
+  The agent configuration is pushed through the SSM parameter. Instances that
+  are already running pick up a changed `traces` setting on the next scheduled
+  association run or when they are replaced (for example by an instance refresh).
+
 # Example Usage
 examples: |-
   ### Minimal Example
@@ -329,6 +359,53 @@ examples: |-
     iam = {
       create      = true # CloudWatchAgentServerPolicy is attached when the agent is enabled.
       ssm_enabled = true # AmazonSSMManagedInstanceCore is attached once by default for SSM access.
+    }
+  }
+  ```
+
+  ### CloudWatch Application Signals with OpenTelemetry Example
+
+  Typical OpenTelemetry setup: ADOT-instrumented services send traces and
+  Application Signals metrics to the local agent, and other OpenTelemetry SDKs
+  use the generic OTLP receiver. Every receiver must be enabled explicitly.
+
+  ```hcl
+  terraform {
+    source = "git::https://github.com/cloudopsworks/terraform-module-aws-ec2-autoscaling-group.git//?ref=vX.Y.Z"
+  }
+
+  inputs = {
+    org = {
+      organization_name = "acme"
+      organization_unit = "platform"
+      environment_type  = "prod"
+      environment_name  = "observability"
+    }
+    name = "traced-api"
+    asg = {
+      type = "t3.small"
+      ami = {
+        owners      = ["amazon"]
+        name        = "al2023-ami-2023.*-x86_64"
+        most_recent = true
+      }
+      vpc = { subnet_ids = ["subnet-12345678", "subnet-87654321"] }
+
+      cloudwatch_agent = {
+        enabled = true
+        traces = {
+          application_signals = {
+            enabled = true
+            limiter = { drop_threshold = 500 }
+          }
+          otlp = {
+            enabled = true # Agent defaults: gRPC 127.0.0.1:4317, HTTP 127.0.0.1:4318.
+          }
+        }
+      }
+    }
+    iam = {
+      create = true # Adds CloudWatchAgentTracesPolicy (X-Ray + /aws/application-signals/data).
     }
   }
   ```

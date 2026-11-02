@@ -31,6 +31,7 @@
 | [aws_iam_role.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.cloudwatch_agent_parameter](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.cloudwatch_agent_traces](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.logs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_iam_role_policy.udpate_asg_sqs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
@@ -57,6 +58,7 @@
 | [aws_cloudwatch_event_bus.default](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/cloudwatch_event_bus) | data source |
 | [aws_iam_policy_document.assume_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.cloudwatch_agent_parameter](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.cloudwatch_agent_traces](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.update_asg_auto](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
@@ -88,7 +90,7 @@
 | ---- | ----------- |
 | <a name="output_autoscaling_group_arn"></a> [autoscaling\_group\_arn](#output\_autoscaling\_group\_arn) | ARN of the Auto Scaling Group when asg.create is true. |
 | <a name="output_autoscaling_group_id"></a> [autoscaling\_group\_id](#output\_autoscaling\_group\_id) | ID of the Auto Scaling Group when asg.create is true. |
-| <a name="output_cloudwatch_agent"></a> [cloudwatch\_agent](#output\_cloudwatch\_agent) | CloudWatch Agent SSM document and association, configuration parameter, managed policies, and ASG target tags. |
+| <a name="output_cloudwatch_agent"></a> [cloudwatch\_agent](#output\_cloudwatch\_agent) | CloudWatch Agent SSM document and association, configuration parameter, managed and inline policies, trace settings, and ASG target tags. |
 | <a name="output_iam_role"></a> [iam\_role](#output\_iam\_role) | Created IAM instance profile, role name, and role ARN when iam.create is true. |
 | <a name="output_key_pair_name"></a> [key\_pair\_name](#output\_key\_pair\_name) | Name of the generated AWS key pair when asg.key\_pair.create is true. |
 | <a name="output_key_pair_public_key"></a> [key\_pair\_public\_key](#output\_key\_pair\_public\_key) | Generated OpenSSH public key material when asg.key\_pair.create is true. |

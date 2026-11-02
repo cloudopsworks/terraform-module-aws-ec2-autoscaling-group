@@ -155,6 +155,51 @@ resource "aws_iam_role_policy" "cloudwatch_agent_parameter" {
   policy = data.aws_iam_policy_document.cloudwatch_agent_parameter[count.index].json
 }
 
+# CloudWatchAgentServerPolicy already carries these actions; this inline policy keeps traces and
+# Application Signals working when attach_managed_policies is false.
+data "aws_iam_policy_document" "cloudwatch_agent_traces" {
+  count = try(var.asg.create, true) && try(var.iam.create, true) && local.cloudwatch_agent_traces_enabled ? 1 : 0
+
+  statement {
+    sid    = "AllowCloudWatchAgentTracesToXRay"
+    effect = "Allow"
+    actions = [
+      "xray:PutTraceSegments",
+      "xray:PutTelemetryRecords",
+      "xray:GetSamplingRules",
+      "xray:GetSamplingTargets",
+      "xray:GetSamplingStatisticSummaries"
+    ]
+    resources = ["*"]
+  }
+
+  dynamic "statement" {
+    for_each = local.cloudwatch_agent_application_signals_enabled ? [1] : []
+    content {
+      sid    = "AllowApplicationSignalsMetricsLogGroup"
+      effect = "Allow"
+      actions = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:DescribeLogStreams",
+        "logs:PutLogEvents"
+      ]
+      resources = [
+        "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/application-signals/data",
+        "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/application-signals/data:*"
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "cloudwatch_agent_traces" {
+  count = try(var.asg.create, true) && try(var.iam.create, true) && local.cloudwatch_agent_traces_enabled ? 1 : 0
+
+  role   = aws_iam_role.this[0].name
+  name   = "CloudWatchAgentTracesPolicy"
+  policy = data.aws_iam_policy_document.cloudwatch_agent_traces[count.index].json
+}
+
 resource "aws_iam_role_policy" "logs" {
   count = try(var.asg.create, true) && try(var.iam.create, true) && try(var.iam.logs_enabled, false) ? 1 : 0
   role  = aws_iam_role.this[0].name

@@ -72,6 +72,21 @@ variable "name_prefix" {
 #     max_concurrency: "10%"  # (Optional) Maximum concurrent association executions. Default: AWS default.
 #     max_errors: "1"  # (Optional) Maximum failed association executions. Default: AWS default.
 #     wait_for_success_timeout_seconds: null  # (Optional) Seconds Terraform waits for association success. Default: provider default.
+#     traces:  # (Optional) Trace receivers added to the agent configuration. All are opt-in; only the keys you set are written, so the agent's own defaults apply. Any receiver enabled here also adds the CloudWatchAgentTracesPolicy inline policy (X-Ray write and sampling) when iam.create=true.
+#       application_signals:  # (Optional) CloudWatch Application Signals. Requires CloudWatch Agent 1.300040.0+ and Application Signals enabled once per account and Region.
+#         enabled: false  # (Optional) Receive ADOT/OpenTelemetry traces and metrics on OTLP 127.0.0.1:4316 (HTTP) and 4315 (gRPC); spans go to X-Ray and metrics go as EMF to the /aws/application-signals/data log group. The agent also serves the X-Ray sampling proxy on TCP 0.0.0.0:2000. Default: false.
+#         rules: []  # (Optional) Cardinality rules passed to logs.metrics_collected.application_signals.rules. Each item: rule_name, selectors [{dimension, match}], action ("keep", "drop", "replace"), replacements [{target_dimension, value}] (required for "replace"). Default: [].
+#         limiter: {}  # (Optional) Metric limiter passed to logs.metrics_collected.application_signals.limiter: disabled (bool), drop_threshold (number, agent default 500), rotation_interval (e.g. "1h"), log_dropped_metrics (bool). Default: {} (agent defaults).
+#       otlp:  # (Optional) Generic OpenTelemetry trace receiver; forwards spans to AWS X-Ray.
+#         enabled: false  # (Optional) Receive OTLP traces from the OpenTelemetry SDK. Default: false.
+#         grpc_endpoint: "127.0.0.1:4317"  # (Optional) OTLP gRPC listen address in ip:port format. Default: agent default "127.0.0.1:4317".
+#         http_endpoint: "127.0.0.1:4318"  # (Optional) OTLP HTTP listen address in ip:port format. Default: agent default "127.0.0.1:4318".
+#       xray:  # (Optional) X-Ray SDK/daemon-compatible receiver; forwards segments to AWS X-Ray.
+#         enabled: false  # (Optional) Receive X-Ray SDK segments over UDP and serve remote sampling over TCP. Default: false.
+#         bind_address: "127.0.0.1:2000"  # (Optional) UDP listen address for segments in ip:port format. Default: agent default "127.0.0.1:2000".
+#         tcp_proxy:  # (Optional) TCP proxy for X-Ray remote sampling.
+#           bind_address: "127.0.0.1:2000"  # (Optional) TCP listen address in ip:port format. Default: agent default "127.0.0.1:2000". Must use a port other than 2000 when application_signals is also enabled.
+#       transit_spans_in_otlp_format: false  # (Optional) Send spans to X-Ray in OTLP format, which keeps span events in Transaction Search. Default: agent default (false).
 #     workload_detection:  # (Optional) Instance tag used by CloudWatch console tag-based workload detection/deployment.
 #       enabled: false  # (Optional) Add the workload-detection target tag even when cloudwatch_agent.enabled is false. Default: false.
 #       tag_key: "CloudWatchAgent"  # (Optional) EC2 instance tag key used for SSM targeting and CloudWatch console tag-based deployment. Default: "CloudWatchAgent".
@@ -324,6 +339,17 @@ variable "asg" {
       || try(contains(["yes", "no"], var.asg.cloudwatch_agent.restart), false)
     )
     error_message = "asg.cloudwatch_agent.restart must be \"yes\" or \"no\" when provided."
+  }
+
+  # The Application Signals pipeline always binds the X-Ray sampling proxy to TCP 0.0.0.0:2000,
+  # and the xray receiver's TCP proxy defaults to 127.0.0.1:2000; the agent would fail to start.
+  validation {
+    condition = !(
+      try(tobool(var.asg.cloudwatch_agent.traces.application_signals.enabled), false)
+      && try(tobool(var.asg.cloudwatch_agent.traces.xray.enabled), false)
+      && endswith(coalesce(try(tostring(var.asg.cloudwatch_agent.traces.xray.tcp_proxy.bind_address), null), "127.0.0.1:2000"), ":2000")
+    )
+    error_message = "asg.cloudwatch_agent.traces.xray.tcp_proxy.bind_address must use a port other than 2000 when traces.application_signals is also enabled: Application Signals already serves the X-Ray sampling proxy on TCP 0.0.0.0:2000."
   }
 
   validation {
