@@ -3,8 +3,7 @@
   ** 
   ** This file was automatically generated. 
   ** 1) Make all changes to `README.yaml` 
-  ** 2) Run `make init` (you only need to do this once)
-  ** 3) Run`make readme` to rebuild this file. 
+  ** 2) Run `tronador readme build` to rebuild this file.
   -->
 [![README Header][readme_header_img]][readme_header_link]
 
@@ -131,8 +130,8 @@ asg:
 
   # cloudwatch_agent:
   #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
-  #   install: true # (Optional) Create AWS-ConfigureAWSPackage association to install AmazonCloudWatchAgent. Default: true.
-  #   configure: true # (Optional) Create AmazonCloudWatch-ManageAgent association to configure and start the agent. Default: true.
+  #   install: true # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
+  #   configure: true # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
   #   attach_managed_policies: true # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
   #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
   #   config_parameter_name: "AmazonCloudWatch-my-asg-config" # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-<name>-config".
@@ -286,6 +285,13 @@ inputs = {
 Note: AWS CloudWatch workload detection is an opt-in CloudWatch console setting.
 This module installs/configures the agent through SSM and applies the EC2 tags
 used by CloudWatch tag-based deployment for current and future matching instances.
+
+The agent install and configure actions run as ordered steps of a single
+module-owned SSM Command document (`<name>-cwagent-ssm-doc`) bound to one
+State Manager association (`<name>-cwagent`). On every instance, including
+ones launched by scale-out or instance refresh, the configure step only runs
+after the install step succeeds. The `onFailure` step control this relies on
+requires SSM Agent 3.0.502 or later.
 
 ## Quick Start
 
@@ -489,8 +495,8 @@ Available targets:
 
 | Name | Version |
 | ---- | ------- |
-| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.35 |
-| <a name="provider_tls"></a> [tls](#provider\_tls) | n/a |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.56.0 |
+| <a name="provider_tls"></a> [tls](#provider\_tls) | 4.3.0 |
 
 ## Modules
 
@@ -527,8 +533,8 @@ Available targets:
 | [aws_secretsmanager_secret_version.instance_public_key](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/secretsmanager_secret_version) | resource |
 | [aws_security_group.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
 | [aws_security_group_rule.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group_rule) | resource |
-| [aws_ssm_association.cloudwatch_agent_configure](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
-| [aws_ssm_association.cloudwatch_agent_install](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
+| [aws_ssm_association.cloudwatch_agent](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_association) | resource |
+| [aws_ssm_document.cloudwatch_agent](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_document) | resource |
 | [aws_ssm_document.update_asg](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_document) | resource |
 | [aws_ssm_parameter.cloudwatch_agent_config](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_parameter) | resource |
 | [tls_private_key.this](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
@@ -568,7 +574,7 @@ Available targets:
 | ---- | ----------- |
 | <a name="output_autoscaling_group_arn"></a> [autoscaling\_group\_arn](#output\_autoscaling\_group\_arn) | ARN of the Auto Scaling Group when asg.create is true. |
 | <a name="output_autoscaling_group_id"></a> [autoscaling\_group\_id](#output\_autoscaling\_group\_id) | ID of the Auto Scaling Group when asg.create is true. |
-| <a name="output_cloudwatch_agent"></a> [cloudwatch\_agent](#output\_cloudwatch\_agent) | CloudWatch Agent SSM associations, configuration parameter, managed policies, and ASG target tags. |
+| <a name="output_cloudwatch_agent"></a> [cloudwatch\_agent](#output\_cloudwatch\_agent) | CloudWatch Agent SSM document and association, configuration parameter, managed policies, and ASG target tags. |
 | <a name="output_iam_role"></a> [iam\_role](#output\_iam\_role) | Created IAM instance profile, role name, and role ARN when iam.create is true. |
 | <a name="output_key_pair_name"></a> [key\_pair\_name](#output\_key\_pair\_name) | Name of the generated AWS key pair when asg.key\_pair.create is true. |
 | <a name="output_key_pair_public_key"></a> [key\_pair\_public\_key](#output\_key\_pair\_public\_key) | Generated OpenSSH public key material when asg.key\_pair.create is true. |

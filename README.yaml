@@ -96,8 +96,8 @@ usage: |-
 
     # cloudwatch_agent:
     #   enabled: false # (Optional) Enable CloudWatch Agent installation/configuration through SSM State Manager. Default: false.
-    #   install: true # (Optional) Create AWS-ConfigureAWSPackage association to install AmazonCloudWatchAgent. Default: true.
-    #   configure: true # (Optional) Create AmazonCloudWatch-ManageAgent association to configure and start the agent. Default: true.
+    #   install: true # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
+    #   configure: true # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
     #   attach_managed_policies: true # (Optional) Attach CloudWatchAgentServerPolicy when iam.create=true; AmazonSSMManagedInstanceCore is provided by iam.ssm_enabled by default and skipped here to avoid duplicate attachments. Default: true.
     #   create_config_parameter: true # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
     #   config_parameter_name: "AmazonCloudWatch-my-asg-config" # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-<name>-config".
@@ -251,6 +251,13 @@ usage: |-
   Note: AWS CloudWatch workload detection is an opt-in CloudWatch console setting.
   This module installs/configures the agent through SSM and applies the EC2 tags
   used by CloudWatch tag-based deployment for current and future matching instances.
+
+  The agent install and configure actions run as ordered steps of a single
+  module-owned SSM Command document (`<name>-cwagent-ssm-doc`) bound to one
+  State Manager association (`<name>-cwagent`). On every instance, including
+  ones launched by scale-out or instance refresh, the configure step only runs
+  after the install step succeeds. The `onFailure` step control this relies on
+  requires SSM Agent 3.0.502 or later.
 
 # Example Usage
 examples: |-

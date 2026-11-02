@@ -50,8 +50,8 @@ variable "name_prefix" {
 #   auto_recovery: true  # (Optional) Instance maintenance auto recovery. true maps to "default", false maps to "disabled"; omit to leave unmanaged. Default: null.
 #   cloudwatch_agent:  # (Optional) CloudWatch Agent installation, configuration, and workload-detection targeting.
 #     enabled: false  # (Optional) Enable CloudWatch Agent integration. Default: false.
-#     install: true  # (Optional) Create an SSM State Manager association using AWS-ConfigureAWSPackage to install AmazonCloudWatchAgent. Default: true.
-#     configure: true  # (Optional) Create an SSM State Manager association using AmazonCloudWatch-ManageAgent to configure and start the agent. Default: true.
+#     install: true  # (Optional) Add the install step (runs AWS-ConfigureAWSPackage for AmazonCloudWatchAgent) to the module's CloudWatch Agent SSM document. Runs before the configure step; a failed install stops the run. Default: true.
+#     configure: true  # (Optional) Add the configure step (runs AmazonCloudWatch-ManageAgent to configure and start the agent) to the module's CloudWatch Agent SSM document. Runs after the install step when both are enabled. Default: true.
 #     create_config_parameter: true  # (Optional) Create the SSM Parameter Store value that stores the agent JSON configuration. Default: true.
 #     config_parameter_name: "AmazonCloudWatch-my-asg-config"  # (Optional) SSM parameter name for the agent configuration. Default: "AmazonCloudWatch-${local.name}-config".
 #     append_default_configuration: true  # (Optional) Shallow-merge configuration with the default memory/disk metric collection profile. Default: true.
